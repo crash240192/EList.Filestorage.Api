@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+	<PropertyGroup>
+		<TargetFramework>net6.0</TargetFramework>
+		<Nullable>enable</Nullable>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<GenerateDocumentationFile>true</GenerateDocumentationFile>
+		<ContainerImageName>crash240192/elist-filestorage-api</ContainerImageName>
+		<DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<Content Remove="NLog.config" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<EmbeddedResource Include="NLog.config" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<PackageReference Include="Microsoft.AspNetCore.Mvc.NewtonsoftJson" Version="6.0.25" />
+		<PackageReference Include="Swashbuckle.AspNetCore" Version="6.5.0" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\..\EList.Common\EList.Common\EList.Common.csproj" />
+		<ProjectReference Include="..\EList.Filestorage.BackgroundUploader.Impl\EList.Filestorage.BackgroundUploader.Impl.csproj" />
+		<ProjectReference Include="..\EList.Filestorage.DI\EList.Filestorage.DI.csproj" />
+		<ProjectReference Include="..\EList.Filestorage.Model\EList.Filestorage.Model.csproj" />
+	</ItemGroup>
+
+	<ProjectExtensions>
+		<VisualStudio>
+			<UserProperties appsettings_1json__JsonSchema="" />
+		</VisualStudio>
+	</ProjectExtensions>
+
+</Project>

@@ -1,0 +1,9 @@
+.tools
+.vs
+*/bin/*
+*/obj/*
+*.user
+packages/*
+publish/*
+.idea
+FileStorage/*
