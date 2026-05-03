@@ -116,9 +116,23 @@ namespace EList.Filestorage.Core.Impl
             file.Position = 0;
             var hash = Md5Helper.GetHash(file);
 
+            var preview = ImageScaleHelper.ResizeImageByPercent(file, 10);
+            var savedPreview = await _storageDataProvider.CreateAsync(new FileInfoDto
+            {
+                ContentType = mimeType,
+                Extension = extension,
+                Filename = $"preview_{resultFileName}",
+                Size = preview.Length,
+                StorageType = useDbStorage ? StorageTypes.Db : StorageTypes.Local,
+                Processing = true,
+                Hash = hash,
+                AccountId = _authorizationDataStorage.AccoutId
+            });
+
             var newItem = await _storageDataProvider.CreateAsync(new FileInfoDto
             {
                 ContentType = mimeType,
+                PreviewId = savedPreview?.Id,
                 Extension = extension,
                 Filename = resultFileName,
                 Size = contentLength ?? file.Length,
@@ -186,7 +200,7 @@ namespace EList.Filestorage.Core.Impl
             return CommandResult.OK;
         }
 
-        public async Task<FileStreamContainer> GetFileAsync(Guid id)
+        public async Task<FileStreamContainer> GetFileAsync(Guid id, bool? fullSize = false)
         {
             var correlationId = _correlationIdProvider.Get();
             var execTime = Stopwatch.StartNew();
@@ -204,9 +218,10 @@ namespace EList.Filestorage.Core.Impl
 
             if (!fileInfo.IsAvailable)
                 throw new NullReferenceException($"Файл с id='{id}' утерян");
+            
+            var resultFileId = fullSize != null && fullSize.Value ? fileInfo.Id : fileInfo.PreviewId ?? fileInfo.Id;
 
-            var fileStream = await _fileRepository.LoadAsync(fileInfo.Id);
-
+            var fileStream = await _fileRepository.LoadAsync(resultFileId);
             logger.Debug(correlationId, null, methodName, "Method finished", null, execTime.Elapsed);
 
             return new FileStreamContainer

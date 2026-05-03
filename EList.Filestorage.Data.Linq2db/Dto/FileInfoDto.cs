@@ -9,6 +9,9 @@ namespace EList.Filestorage.Data.Linq2db.Dto
         [Column("id"), PrimaryKey, Identity]
         public Guid Id { get; set; }
 
+        [Column("preview_id")]
+        public Guid? PreviewId { get; set; }
+
         [Column("filename")]
         public string Filename { get; set; }
 

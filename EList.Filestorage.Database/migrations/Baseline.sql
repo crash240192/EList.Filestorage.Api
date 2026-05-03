@@ -20,6 +20,7 @@ end $CREATE_STORAGE_TYPES$;
 
 CREATE TABLE public.file_info (
 	id uuid NOT NULL DEFAULT uuid_generate_v4(),
+	preview_id uuid null,
 	filename varchar NOT NULL,
 	"extension" varchar(10) NULL,
 	content_type varchar(100) null,

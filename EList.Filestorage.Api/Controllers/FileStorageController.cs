@@ -123,9 +123,10 @@ namespace EList.Filestorage.Api.Controllers
         /// Скачать файл из хранилища
         /// </summary>
         /// <param name="fileId"></param>
+        /// <param name="fullSize"></param>
         /// <returns></returns>
         [HttpGet("download/{fileId}")]
-        public async Task<IActionResult> DownloadFileAsync(Guid fileId)
+        public async Task<IActionResult> DownloadFileAsync(Guid fileId, [FromHeader(Name = "FullSize")] bool? fullSize)
         {
             var correlationId = _correlationIdProvider.Get();
             var execTime = Stopwatch.StartNew();
@@ -133,7 +134,7 @@ namespace EList.Filestorage.Api.Controllers
             logger.Debug(correlationId, null, methodName, null, "Method started");
             try
             {
-                var result = await _fileStorageService.GetFileAsync(fileId);
+                var result = await _fileStorageService.GetFileAsync(fileId, fullSize);
                 logger.Debug(correlationId, null, methodName, "Method finished", null, execTime.Elapsed);
                 return File(result.Stream, result.ContentType, result.FileName);
             }
