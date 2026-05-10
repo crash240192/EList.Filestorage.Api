@@ -34,13 +34,17 @@ namespace EList.Filestorage.Core.Impl
             using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             timeoutCts.CancelAfter(waitTimeout);
 
+            // Важно: для stdin/stdout использовать «-», а не pipe:0/pipe:1 — на Windows последнее часто
+            // приводит к немедленному завершению ffmpeg и IOException «Канал был закрыт» при чтении stdout.
+            // -ss после -i для не-seekable потока: декодирование с начала до метки (надёжнее для pipe).
             var psi = new ProcessStartInfo
             {
                 FileName = exe,
                 Arguments =
                     "-hide_banner -loglevel error " +
-                    $"-ss {ts} -i pipe:0 " +
-                    "-frames:v 1 -f image2pipe -vcodec mjpeg pipe:1",
+                    "-i - " +
+                    $"-ss {ts} " +
+                    "-an -frames:v 1 -f image2pipe -vcodec mjpeg -",
                 RedirectStandardInput = true,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
@@ -72,9 +76,19 @@ namespace EList.Filestorage.Core.Impl
             await using var outputMs = new MemoryStream();
             var outputTask = process.StandardOutput.BaseStream.CopyToAsync(outputMs, timeoutCts.Token);
 
+            Exception? pipelineException = null;
             try
             {
                 await Task.WhenAll(inputTask, outputTask).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                pipelineException = Unwrap(ex);
+                TryKill(process);
+            }
+
+            try
+            {
                 await process.WaitForExitAsync(timeoutCts.Token).ConfigureAwait(false);
             }
             catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
@@ -88,7 +102,15 @@ namespace EList.Filestorage.Core.Impl
                 throw;
             }
 
-            var stderr = await stderrTask.ConfigureAwait(false);
+            var stderr = (await stderrTask.ConfigureAwait(false)).Trim();
+
+            if (pipelineException != null)
+            {
+                throw new InvalidOperationException(
+                    $"Ошибка обмена данными с ffmpeg: {pipelineException.Message}" +
+                    (string.IsNullOrEmpty(stderr) ? string.Empty : $". Вывод ffmpeg: {stderr}"),
+                    pipelineException);
+            }
 
             if (process.ExitCode != 0)
                 throw new InvalidOperationException(
@@ -100,6 +122,16 @@ namespace EList.Filestorage.Core.Impl
                     $"ffmpeg не вернул данные кадра. {stderr}".Trim());
 
             return bytes;
+        }
+
+        private static Exception Unwrap(Exception ex)
+        {
+            if (ex is AggregateException agg)
+                return agg.Flatten().InnerExceptions.Count == 1
+                    ? agg.Flatten().InnerExceptions[0]
+                    : agg;
+
+            return ex;
         }
 
         private static void TryKill(Process process)
