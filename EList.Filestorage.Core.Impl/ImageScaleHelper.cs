@@ -1,11 +1,14 @@
-﻿using System.Drawing;
-using System.Drawing.Drawing2D;
-using System.Drawing.Imaging;
+﻿//using System.Drawing;
+//using System.Drawing.Drawing2D;
+//using System.Drawing.Imaging;
+using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.Processing;
 
 namespace EList.Filestorage.Core.Impl
 {
     public static class ImageScaleHelper
     {
+        /*
         public static Stream ResizeImageByPercent(Stream inputStream, int percent)
         {
             if (inputStream == null)
@@ -66,6 +69,47 @@ namespace EList.Filestorage.Core.Impl
 
                     return outputStream;
                 }
+            }
+        }
+        */
+
+        public static Stream ResizeImageByPercent(Stream inputStream, int percent)
+        {
+            if (inputStream == null)
+                throw new ArgumentNullException(nameof(inputStream));
+
+            if (percent <= 0)
+                throw new ArgumentException("Процент должен быть больше 0", nameof(percent));
+
+            // Сбрасываем позицию потока в начало (если возможно)
+            if (inputStream.CanSeek)
+            {
+                inputStream.Position = 0;
+            }
+
+            // Вариант 1: Простая загрузка (если поток в правильной позиции)
+            try
+            {
+                using (var image = Image.Load(inputStream))
+                {
+                    int newWidth = (int)(image.Width * percent / 100.0);
+                    int newHeight = (int)(image.Height * percent / 100.0);
+
+                    image.Mutate(x => x.Resize(newWidth, newHeight));
+
+                    var outputStream = new MemoryStream();
+
+                    // Сохраняем в исходном формате
+                    var encoder = image.Metadata.DecodedImageFormat;
+                    image.Save(outputStream, encoder);
+                    outputStream.Position = 0;
+
+                    return outputStream;
+                }
+            }
+            catch (Exception ex)
+            {
+                throw new Exception($"Ошибка загрузки изображения: {ex.Message}", ex);
             }
         }
 

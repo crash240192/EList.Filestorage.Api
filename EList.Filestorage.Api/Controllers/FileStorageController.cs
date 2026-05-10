@@ -15,7 +15,7 @@ namespace EList.Filestorage.Api.Controllers
     /// 
     /// </summary>
     [ApiController]
-    [Authorize]
+    //[Authorize]
     [Route("api")]
     public class FileStorageController : ControllerBase
     {

@@ -2,11 +2,12 @@ using EList.Api.Filtres;
 using EList.Common.Constants;
 using EList.Common.DI;
 using EList.Common.Models;
-using EList.Filestorage.Data.Linq2db.Interfaces;
 using EList.Filestorage.Api.Infrastructure;
 using EList.Filestorage.Api.Middleware;
 using EList.Filestorage.BackgroundUploader;
+using EList.Filestorage.Data.Linq2db.Interfaces;
 using EList.Filestorage.DI;
+using FileTypeValidator;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.HttpOverrides;
@@ -56,6 +57,8 @@ builder.Services.Configure<ApiBehaviorOptions>(options =>
         return result;
     };
 });
+
+//builder.Services.UseFileTypeValidator();
 
 //builder.Services.AddHostedService(BackgroundUploaderService);
 

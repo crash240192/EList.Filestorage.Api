@@ -6,10 +6,16 @@ using EList.Common.Support;
 using EList.Filestorage.Data.Linq2db.Dto;
 using EList.Filestorage.Data.Linq2db.Interfaces;
 using EList.Filestorage.Model.Files;
+using FileTypeValidator.Infrastructure.Interfaces;
+
+//using FileTypeChecker;
+//using FileTypeChecker.Abstracts;
+//using FileTypeChecker.Web.Attributes;
 using Microsoft.AspNetCore.Http;
 using Newtonsoft.Json.Linq;
 using NLog;
 using System.Diagnostics;
+using System.IO;
 using FileInfo = EList.Filestorage.Model.Files.FileInfo;
 using FileStreamContainer = EList.Filestorage.Model.Files.FileStreamContainer;
 
@@ -27,6 +33,7 @@ namespace EList.Filestorage.Core.Impl
         private readonly IFileInfoDataProvider _storageDataProvider;
         private readonly IFileRepository _fileRepository;
         private readonly IAuthorizationDataStorage _authorizationDataStorage;
+        //private readonly IFileTypeValidator _fileTypeValidator;
         //private readonly IXDSStreamClient _xdsClient;
 
         private const string METADATA_TAG_HASH = "hash";
@@ -43,12 +50,15 @@ namespace EList.Filestorage.Core.Impl
         public FileStorageService(ICorrelationIdProvider correlationIdProvider,
             IFileInfoDataProvider fileInfoDataProvider,
             IFileRepository fileRepository,
-            IAuthorizationDataStorage authorizationDataStorage)
+            IAuthorizationDataStorage authorizationDataStorage
+            //, IFileTypeValidator fileTypeValidator
+            )
         {
             _correlationIdProvider = correlationIdProvider;
             _storageDataProvider = fileInfoDataProvider;
             _fileRepository = fileRepository;
             _authorizationDataStorage = authorizationDataStorage;
+            //_fileTypeValidator = fileTypeValidator;
             //_xdsClient = xdsClient;
 
             serviceUrl = ConfigurationManager.AppSettings["localServiceUrl"];
@@ -86,8 +96,32 @@ namespace EList.Filestorage.Core.Impl
             if (maxFileSize != null)
             {
                 if ((contentLength ?? file.Length) > maxFileSize * 1024 * 1024)
-                    return CommandResult<UploadFileResult>.Fail(1, $"Превышено ограничение ({maxFileSize} Мб) на размер загружаемого файла.");
+                    return CommandResult<UploadFileResult>.Fail(1, $"Превышено ограничение ({maxFileSize} Мб) на размер загружаемого файла");
             }
+
+            //TODO: Добавить проверку на соответствие передаваемого типа и mime
+            var mimeType = await MimeTypeUtility.GetMimeTypeFromFileAsync(file);
+            file.Position = 0;
+            var isImage = MimeTypeUtility.IsImage(mimeType);
+            var isVideo = !isImage ? MimeTypeUtility.IsVideo(mimeType) : false;
+
+            if (!isVideo && !isImage)
+                return CommandResult<UploadFileResult>.Fail(1, $"Допускается загрузка только фотографий и видео");
+
+            #region fileChecker
+            //if (!(await FileTypeChecker.FileTypeValidator.IsTypeRecognizableAsync(file)))
+            //    return CommandResult<UploadFileResult>.Fail(1, $"Не удалось определить тип загружаемого файла");
+            //file.Position = 0;
+
+            //var fileMetadata = await FileTypeChecker.FileTypeValidator.GetFileTypeAsync(file);
+            //file.Position = 0;
+
+            //if (string.IsNullOrWhiteSpace(fileMetadata.Name))
+            //    return CommandResult<UploadFileResult>.Fail(1, "Название прикрепляемого файла не должно быть пустым");            
+
+            //if (string.IsNullOrEmpty(fileMetadata.Extension))
+            //    return CommandResult<UploadFileResult>.Fail(1, "Прикрепляемый файл не может быть загружен без расширения");
+            #endregion
 
             var extension = string.Empty;
             var resultFileName = string.Empty;
@@ -105,34 +139,33 @@ namespace EList.Filestorage.Core.Impl
                 resultFileName = fileNameItems?.FirstOrDefault();
             }
 
-            if (string.IsNullOrWhiteSpace(resultFileName))
-                return CommandResult<UploadFileResult>.Fail(1, "Название прикрепляемого файла не должно быть пустым");
-
-            if (string.IsNullOrEmpty(extension))
-                return CommandResult<UploadFileResult>.Fail(1, "Прикрепляемый файл не может быть загружен без расширения (прим. .doc, .txt и т.д.)");
-
-            var mimeType = MimeTypeUtility.FileExtensionToMimeType(extension);
 
             file.Position = 0;
             var hash = Md5Helper.GetHash(file);
-
-            var preview = ImageScaleHelper.ResizeImageByPercent(file, 10);
-            var savedPreview = await _storageDataProvider.CreateAsync(new FileInfoDto
+            Guid? previewId = null;
+            if (isImage)
             {
-                ContentType = mimeType,
-                Extension = extension,
-                Filename = $"preview_{resultFileName}",
-                Size = preview.Length,
-                StorageType = useDbStorage ? StorageTypes.Db : StorageTypes.Local,
-                Processing = true,
-                Hash = hash,
-                AccountId = _authorizationDataStorage.AccoutId
-            });
+                FFMpegCore.
+
+                var preview = ImageScaleHelper.ResizeImageByPercent(file, 10);
+                var savedPreview = await _storageDataProvider.CreateAsync(new FileInfoDto
+                {
+                    ContentType = mimeType,
+                    Extension = extension,
+                    Filename = $"preview_{resultFileName}",
+                    Size = preview.Length,
+                    StorageType = useDbStorage ? StorageTypes.Db : StorageTypes.Local,
+                    Processing = true,
+                    Hash = hash,
+                    AccountId = _authorizationDataStorage.AccoutId
+                });
+                previewId = savedPreview.Id;
+            }
 
             var newItem = await _storageDataProvider.CreateAsync(new FileInfoDto
             {
                 ContentType = mimeType,
-                PreviewId = savedPreview?.Id,
+                PreviewId = previewId,
                 Extension = extension,
                 Filename = resultFileName,
                 Size = contentLength ?? file.Length,
@@ -161,7 +194,6 @@ namespace EList.Filestorage.Core.Impl
                 Id = newItem.Id,
                 Url = $"{serviceUrl}/{DOWNLOAD_METHOD}{newItem.Id}"
             };
-
 
             logger.Debug(correlationId, null, methodName, "Method finished", null, execTime.Elapsed);
             return new CommandResult<UploadFileResult>(result);
@@ -230,7 +262,6 @@ namespace EList.Filestorage.Core.Impl
                 ContentType = fileInfo.ContentType,
                 FileName = $"{fileInfo.Filename}.{fileInfo.Extension}"
             };
-
         }
 
         public async Task<CommandResult<Model.Files.FileInfo>> GetFileInfoAsync(Guid id)
