@@ -145,8 +145,6 @@ namespace EList.Filestorage.Core.Impl
             Guid? previewId = null;
             if (isImage)
             {
-                FFMpegCore.
-
                 var preview = ImageScaleHelper.ResizeImageByPercent(file, 10);
                 var savedPreview = await _storageDataProvider.CreateAsync(new FileInfoDto
                 {
@@ -161,7 +159,14 @@ namespace EList.Filestorage.Core.Impl
                 });
                 previewId = savedPreview.Id;
             }
+            else
+            {
+                file.Position = 0;
+                var videoPreview = await VideoFilesHelper.ExtractThumbnailToBytesAsync(file);
 
+            }
+
+            file.Position = 0;
             var newItem = await _storageDataProvider.CreateAsync(new FileInfoDto
             {
                 ContentType = mimeType,
@@ -250,7 +255,7 @@ namespace EList.Filestorage.Core.Impl
 
             if (!fileInfo.IsAvailable)
                 throw new NullReferenceException($"Файл с id='{id}' утерян");
-            
+
             var resultFileId = fullSize != null && fullSize.Value ? fileInfo.Id : fileInfo.PreviewId ?? fileInfo.Id;
 
             var fileStream = await _fileRepository.LoadAsync(resultFileId);

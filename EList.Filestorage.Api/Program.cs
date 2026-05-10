@@ -2,6 +2,7 @@ using EList.Api.Filtres;
 using EList.Common.Constants;
 using EList.Common.DI;
 using EList.Common.Models;
+using EList.Common.Support;
 using EList.Filestorage.Api.Infrastructure;
 using EList.Filestorage.Api.Middleware;
 using EList.Filestorage.BackgroundUploader;
@@ -117,6 +118,8 @@ app.Lifetime.ApplicationStarted.Register(() =>
     //versionDataProvider.Configure(connectionStringName);
     storageDataProvider.Configure(connectionStringName);
     //VersionService.Configure(versionDataProvider);
+
+    VideoFilesHelper.ConfigureFFmpeg();
 });
 
 app.Lifetime.ApplicationStopping.Register(() =>
