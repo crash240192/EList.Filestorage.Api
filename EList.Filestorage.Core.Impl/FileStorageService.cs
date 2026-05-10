@@ -172,7 +172,7 @@ namespace EList.Filestorage.Core.Impl
                 byte[] videoPreviewBytes;
                 try
                 {
-                    videoPreviewBytes = await VideoFilesHelper.ExtractThumbnailToBytesAsync(file, _ffmpegBinaryPath);
+                    videoPreviewBytes = await VideoFilesHelper.ExtractThumbnailToBytesAsync(file, _ffmpegBinaryPath, extension);
                 }
                 catch (Exception ex)
                 {
