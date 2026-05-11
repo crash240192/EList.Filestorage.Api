@@ -7,12 +7,13 @@ namespace EList.Filestorage.Core.Impl
     {
         /// <summary>
         /// Извлекает один кадр из видео-потока в JPEG через ffmpeg.
-        /// Сначала пробует stdin/stdout без файла результата; при типичных сбоях pipe на Windows
-        /// повторяет попытку с временным входным файлом (JPEG по-прежнему только в памяти).
+        /// Видео сначала копируется во временный файл, затем <c>ffmpeg -i</c> — так надёжно на Windows
+        /// (передача большого файла в stdin процесса через <see cref="Process"/> часто обрывается с «канал закрыт»).
+        /// Кадр по-прежнему читается из stdout в память, отдельный файл превью на диске не создаётся.
         /// </summary>
-        /// <param name="videoStream">Поток с видео.</param>
+        /// <param name="videoStream">Поток с видео; для <see cref="Stream.CanSeek"/> позиция сбрасывается в 0 перед копированием.</param>
         /// <param name="ffmpegExecutable">Имя или полный путь к ffmpeg.</param>
-        /// <param name="inputExtensionHint">Расширение контейнера (без точки), для временного файла при fallback.</param>
+        /// <param name="inputExtensionHint">Расширение контейнера (без точки), для временного входного файла.</param>
         /// <param name="position">Момент кадра; по умолчанию 1 с от начала.</param>
         /// <param name="timeout">Таймаут ожидания ffmpeg.</param>
         /// <param name="cancellationToken">Внешняя отмена.</param>
@@ -31,167 +32,15 @@ namespace EList.Filestorage.Core.Impl
             var ext = SanitizeExtension(inputExtensionHint);
             var waitTimeout = timeout ?? TimeSpan.FromMinutes(2);
 
-            MemoryStream? ownedCopy = null;
-            Stream workStream;
-            if (!videoStream.CanSeek)
+            if (videoStream.CanSeek)
             {
-                ownedCopy = new MemoryStream();
-                await videoStream.CopyToAsync(ownedCopy, 81920, cancellationToken).ConfigureAwait(false);
-                workStream = ownedCopy;
-                workStream.Position = 0;
-            }
-            else
-            {
+                if (videoStream.Length == 0)
+                    throw new InvalidOperationException("Поток видео пуст (длина 0).");
+
                 videoStream.Position = 0;
-                workStream = videoStream;
             }
 
-            try
-            {
-                try
-                {
-                    return await ExtractViaStdinPipeAsync(workStream, exe, position, waitTimeout, cancellationToken)
-                        .ConfigureAwait(false);
-                }
-                catch (Exception ex) when (ShouldRetryWithTempInputFile(ex))
-                {
-                    if (workStream.CanSeek)
-                        workStream.Position = 0;
-
-                    return await ExtractViaTempInputFileAsync(workStream, exe, ext, position, waitTimeout, cancellationToken)
-                        .ConfigureAwait(false);
-                }
-            }
-            finally
-            {
-                ownedCopy?.Dispose();
-            }
-        }
-
-        private static async Task<byte[]> ExtractViaStdinPipeAsync(
-            Stream videoStream,
-            string ffmpegExecutable,
-            TimeSpan? position,
-            TimeSpan waitTimeout,
-            CancellationToken cancellationToken)
-        {
-            var ts = (position ?? TimeSpan.FromSeconds(1))
-                .ToString(@"hh\:mm\:ss\.fff", CultureInfo.InvariantCulture);
-
-            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            timeoutCts.CancelAfter(waitTimeout);
-
-            var psi = new ProcessStartInfo
-            {
-                FileName = ffmpegExecutable,
-                RedirectStandardInput = true,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true
-            };
-
-            psi.ArgumentList.Add("-hide_banner");
-            psi.ArgumentList.Add("-loglevel");
-            psi.ArgumentList.Add("error");
-            psi.ArgumentList.Add("-probesize");
-            psi.ArgumentList.Add("100M");
-            psi.ArgumentList.Add("-analyzeduration");
-            psi.ArgumentList.Add("100M");
-            psi.ArgumentList.Add("-i");
-            psi.ArgumentList.Add("-");
-            psi.ArgumentList.Add("-ss");
-            psi.ArgumentList.Add(ts);
-            psi.ArgumentList.Add("-an");
-            psi.ArgumentList.Add("-frames:v");
-            psi.ArgumentList.Add("1");
-            psi.ArgumentList.Add("-f");
-            psi.ArgumentList.Add("image2pipe");
-            psi.ArgumentList.Add("-vcodec");
-            psi.ArgumentList.Add("mjpeg");
-            psi.ArgumentList.Add("-");
-
-            using var process = new Process { StartInfo = psi, EnableRaisingEvents = true };
-
-            if (!process.Start())
-                throw new InvalidOperationException("Не удалось запустить процесс ffmpeg.");
-
-            var stderrTask = process.StandardError.ReadToEndAsync();
-
-            var inputTask = Task.Run(async () =>
-            {
-                try
-                {
-                    await videoStream.CopyToAsync(process.StandardInput.BaseStream, 81920, timeoutCts.Token)
-                        .ConfigureAwait(false);
-                    await process.StandardInput.BaseStream.FlushAsync(timeoutCts.Token).ConfigureAwait(false);
-                }
-                finally
-                {
-                    process.StandardInput.Close();
-                }
-            }, CancellationToken.None);
-
-            await using var outputMs = new MemoryStream();
-            var outputTask = process.StandardOutput.BaseStream.CopyToAsync(outputMs, timeoutCts.Token);
-
-            Exception? pipelineException = null;
-            try
-            {
-                await Task.WhenAll(inputTask, outputTask).ConfigureAwait(false);
-            }
-            catch (Exception ex)
-            {
-                pipelineException = Unwrap(ex);
-                // Не вызываем Kill: иначе второй параллельный поток часто получает «Канал был закрыт» вместо реальной причины.
-            }
-
-            try
-            {
-                await process.WaitForExitAsync(timeoutCts.Token).ConfigureAwait(false);
-            }
-            catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
-            {
-                TryKill(process);
-                throw new TimeoutException($"Превышено время ожидания ffmpeg ({waitTimeout}).");
-            }
-            catch (OperationCanceledException)
-            {
-                TryKill(process);
-                throw;
-            }
-
-            var stderr = (await stderrTask.ConfigureAwait(false)).Trim();
-
-            if (pipelineException != null)
-            {
-                throw new InvalidOperationException(
-                    $"Ошибка обмена данными с ffmpeg: {pipelineException.Message}" +
-                    (string.IsNullOrEmpty(stderr) ? string.Empty : $". Вывод ffmpeg: {stderr}"),
-                    pipelineException);
-            }
-
-            if (process.ExitCode != 0)
-                throw new InvalidOperationException(
-                    $"ffmpeg завершился с кодом {process.ExitCode}. {stderr}".Trim());
-
-            var bytes = outputMs.ToArray();
-            if (bytes.Length == 0)
-                throw new InvalidOperationException(
-                    $"ffmpeg не вернул данные кадра. {stderr}".Trim());
-
-            return bytes;
-        }
-
-        private static async Task<byte[]> ExtractViaTempInputFileAsync(
-            Stream videoStream,
-            string ffmpegExecutable,
-            string extension,
-            TimeSpan? position,
-            TimeSpan waitTimeout,
-            CancellationToken cancellationToken)
-        {
-            var tempPath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}.{extension}");
+            var tempPath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}.{ext}");
             try
             {
                 await using (var fs = new FileStream(tempPath, FileMode.CreateNew, FileAccess.Write, FileShare.None,
@@ -200,7 +49,12 @@ namespace EList.Filestorage.Core.Impl
                     await videoStream.CopyToAsync(fs, 81920, cancellationToken).ConfigureAwait(false);
                 }
 
-                return await RunFfmpegFileToStdoutJpegAsync(tempPath, ffmpegExecutable, position, waitTimeout, cancellationToken)
+                var written = new FileInfo(tempPath).Length;
+                if (written == 0)
+                    throw new InvalidOperationException(
+                        "Во временный файл не записано ни одного байта: проверьте, что поток не был прочитан до конца до вызова (для не-seekable потоков нужен буфер запроса / копирование в MemoryStream до хэша).");
+
+                return await RunFfmpegFileToStdoutJpegAsync(tempPath, exe, position, waitTimeout, cancellationToken)
                     .ConfigureAwait(false);
             }
             finally
@@ -302,30 +156,6 @@ namespace EList.Filestorage.Core.Impl
             return bytes;
         }
 
-        private static bool ShouldRetryWithTempInputFile(Exception ex)
-        {
-            for (var e = ex; e != null; e = e.InnerException!)
-            {
-                if (e is TimeoutException or OperationCanceledException or OutOfMemoryException)
-                    return false;
-
-                if (e is IOException)
-                    return true;
-
-                var msg = e.Message;
-                if (msg.Contains("Канал был закрыт", StringComparison.Ordinal))
-                    return true;
-                if (msg.Contains("broken pipe", StringComparison.OrdinalIgnoreCase))
-                    return true;
-                if (msg.Contains("pipe has been ended", StringComparison.OrdinalIgnoreCase))
-                    return true;
-                if (msg.Contains("forcibly closed", StringComparison.OrdinalIgnoreCase))
-                    return true;
-            }
-
-            return false;
-        }
-
         private static string SanitizeExtension(string? extension)
         {
             if (string.IsNullOrWhiteSpace(extension))
@@ -347,9 +177,10 @@ namespace EList.Filestorage.Core.Impl
         private static Exception Unwrap(Exception ex)
         {
             if (ex is AggregateException agg)
-                return agg.Flatten().InnerExceptions.Count == 1
-                    ? agg.Flatten().InnerExceptions[0]
-                    : agg;
+            {
+                var flat = agg.Flatten().InnerExceptions;
+                return flat.Count == 1 ? flat[0] : agg;
+            }
 
             return ex;
         }
