@@ -46,6 +46,7 @@ namespace EList.Filestorage.Core.Impl
         private readonly string serviceUrl;
         private long? maxFileSize;
         private readonly bool useDbStorage;
+        private readonly string? _ffmpegBinaryPath;
 
         public FileStorageService(ICorrelationIdProvider correlationIdProvider,
             IFileInfoDataProvider fileInfoDataProvider,
@@ -66,6 +67,12 @@ namespace EList.Filestorage.Core.Impl
             useDbStorage = ConfigurationManager.AppSettings.Contains("useDbStorage")
                ? bool.Parse(ConfigurationManager.AppSettings["useDbStorage"])
                : false;
+
+            _ffmpegBinaryPath = ConfigurationManager.AppSettings.Contains("ffmpegBinaryPath")
+                ? ConfigurationManager.AppSettings["ffmpegBinaryPath"]?.Trim()
+                : null;
+            if (string.IsNullOrEmpty(_ffmpegBinaryPath))
+                _ffmpegBinaryPath = null;
         }
 
         public async Task<CommandResult<UploadFileResult>> SaveFileAsync(IFormFile file)
@@ -162,8 +169,46 @@ namespace EList.Filestorage.Core.Impl
             else
             {
                 file.Position = 0;
-                var videoPreview = await VideoFilesHelper.ExtractThumbnailToBytesAsync(file);
+                byte[] videoPreviewBytes;
+                try
+                {
+                    videoPreviewBytes = await VideoFilesHelper.ExtractThumbnailToBytesAsync(file, _ffmpegBinaryPath, extension);
+                }
+                catch (Exception ex)
+                {
+                    logger.Error(correlationId, null, methodName, $"Не удалось создать превью видео: {ex.Message}", execTime.Elapsed, ex);
+                    return CommandResult<UploadFileResult>.Fail(1, $"Не удалось создать превью видео: {ex.Message}");
+                }
 
+                var savedPreview = await _storageDataProvider.CreateAsync(new FileInfoDto
+                {
+                    ContentType = "image/jpeg",
+                    Extension = "jpg",
+                    Filename = $"preview_{resultFileName}",
+                    Size = videoPreviewBytes.LongLength,
+                    StorageType = useDbStorage ? StorageTypes.Db : StorageTypes.Local,
+                    Processing = true,
+                    Hash = hash,
+                    AccountId = _authorizationDataStorage.AccoutId
+                });
+                previewId = savedPreview.Id;
+
+                try
+                {
+                    await using (var previewStream = new MemoryStream(videoPreviewBytes))
+                    {
+                        await _fileRepository.SaveAsync(savedPreview.Id, previewStream);
+                    }
+                }
+                catch
+                {
+                    await _storageDataProvider.DeleteAsync(savedPreview.Id);
+                    throw;
+                }
+
+                savedPreview.Processing = false;
+                savedPreview.IsAvailable = true;
+                await _storageDataProvider.UpdateAsync(savedPreview);
             }
 
             file.Position = 0;
