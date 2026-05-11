@@ -46,6 +46,9 @@ namespace EList.Filestorage.Core.Impl
         private readonly string serviceUrl;
         private long? maxFileSize;
         private readonly bool useDbStorage;
+        private readonly int photoPreviewScalePercent;
+        private readonly int videoPreviewScalePercent;
+        private readonly int videoTimeframeSeconds;
 
         public FileStorageService(ICorrelationIdProvider correlationIdProvider,
             IFileInfoDataProvider fileInfoDataProvider,
@@ -66,6 +69,16 @@ namespace EList.Filestorage.Core.Impl
             useDbStorage = ConfigurationManager.AppSettings.Contains("useDbStorage")
                ? bool.Parse(ConfigurationManager.AppSettings["useDbStorage"])
                : false;
+
+            photoPreviewScalePercent = ConfigurationManager.AppSettings.Contains("preview:photoScalePercent")
+            ? Int32.Parse(ConfigurationManager.AppSettings["preview:photoScalePercent"])
+            : 20;
+            videoPreviewScalePercent = ConfigurationManager.AppSettings.Contains("preview:videoScalePercent")
+            ? Int32.Parse(ConfigurationManager.AppSettings["preview:videoScalePercent"])
+            : 15;
+            videoTimeframeSeconds = ConfigurationManager.AppSettings.Contains("preview:videoTimeFrameSeconds")
+            ? Int32.Parse(ConfigurationManager.AppSettings["preview:videoTimeFrameSeconds"])
+            : 1;
         }
 
         public async Task<CommandResult<UploadFileResult>> SaveFileAsync(IFormFile file)
@@ -142,66 +155,153 @@ namespace EList.Filestorage.Core.Impl
 
             file.Position = 0;
             var hash = Md5Helper.GetHash(file);
-            Guid? previewId = null;
             if (isImage)
             {
-                var preview = ImageScaleHelper.ResizeImageByPercent(file, 10);
-                var savedPreview = await _storageDataProvider.CreateAsync(new FileInfoDto
+                #region photo preview
+                var preview = ImageScaleHelper.ResizeImageByPercent(file, photoPreviewScalePercent);
+                var previewDbItem = await _storageDataProvider.CreateAsync(new FileInfoDto
                 {
                     ContentType = mimeType,
                     Extension = extension,
                     Filename = $"preview_{resultFileName}",
                     Size = preview.Length,
+                    StorageType = StorageTypes.Local,
+                    Processing = true,
+                    Hash = hash,
+                    AccountId = _authorizationDataStorage.AccoutId
+                });
+                #endregion
+
+                #region save photo 
+                file.Position = 0;
+                var photoDbItem = await _storageDataProvider.CreateAsync(new FileInfoDto
+                {
+                    ContentType = mimeType,
+                    PreviewId = previewDbItem.Id,
+                    Extension = extension,
+                    Filename = resultFileName,
+                    Size = contentLength ?? file.Length,
                     StorageType = useDbStorage ? StorageTypes.Db : StorageTypes.Local,
                     Processing = true,
                     Hash = hash,
                     AccountId = _authorizationDataStorage.AccoutId
                 });
-                previewId = savedPreview.Id;
+                #endregion
+
+                try
+                {
+                    await _fileRepository.SaveAsync(photoDbItem.Id, file);
+                    await _fileRepository.SaveAsync(previewDbItem.Id, preview);
+                }
+                catch
+                {
+                    await _storageDataProvider.DeleteAsync(photoDbItem.Id);
+                    await _storageDataProvider.DeleteAsync(previewDbItem.Id);
+                    throw;
+                }
+
+                photoDbItem.Processing = false;
+                photoDbItem.IsAvailable = true;
+                await _storageDataProvider.UpdateAsync(photoDbItem);
+
+                result = new UploadFileResult
+                {
+                    Id = photoDbItem.Id,
+                    Url = $"{serviceUrl}/{DOWNLOAD_METHOD}{photoDbItem.Id}"
+                };
+
+                logger.Debug(correlationId, null, methodName, "Method finished", null, execTime.Elapsed);
+                return new CommandResult<UploadFileResult>(result);
             }
             else
             {
                 file.Position = 0;
-                var videoPreview = await VideoFilesHelper.ExtractThumbnailToBytesAsync(file);
+                var videoDbItem = await _storageDataProvider.CreateAsync(new FileInfoDto
+                {
+                    ContentType = mimeType,
+                    PreviewId = null,
+                    Extension = extension,
+                    Filename = resultFileName,
+                    Size = contentLength ?? file.Length,
+                    StorageType = StorageTypes.Local,
+                    Processing = true,
+                    Hash = hash,
+                    AccountId = _authorizationDataStorage.AccoutId
+                });
 
+                string filePath;
+                try
+                {
+                    filePath = await _fileRepository.SaveAsync(videoDbItem.Id, file);
+                }
+                catch (Exception ex)
+                {
+                    await _storageDataProvider.DeleteAsync(videoDbItem.Id);
+                    throw new Exception($"Не удалось сохранить файл: {ex.Message}");
+                }
+
+                if (filePath == null)
+                {
+                    await _storageDataProvider.DeleteAsync(videoDbItem.Id);
+                    throw new Exception("Не удалось сохранить файл");
+                }
+
+                var ffMpeg = new NReco.VideoConverter.FFMpegConverter();
+                var thumbnailStream = new MemoryStream();
+                ffMpeg.GetVideoThumbnail(filePath, thumbnailStream, videoTimeframeSeconds);
+                thumbnailStream.Position = 0;
+                var scaledThumbnail = ImageScaleHelper.ResizeImageByPercent(thumbnailStream, videoPreviewScalePercent);
+                if (thumbnailStream.Length == 0)
+                {
+                    logger.Warn(correlationId, null, methodName, $"Не удалось извлечь превью для видеофайла с id='{videoDbItem.Id}'");
+                }
+                else
+                {
+                    var thumbnailMimeType = await MimeTypeUtility.GetMimeTypeFromFileAsync(scaledThumbnail);
+                    var thumbnailExtension = MimeTypeUtility.MimeTypeToFileExtension(thumbnailMimeType);
+                    scaledThumbnail.Position = 0;
+
+                    var thumbnailDbItem = await _storageDataProvider.CreateAsync(new FileInfoDto
+                    {
+                        ContentType = thumbnailMimeType,
+                        Extension = thumbnailExtension,
+                        Filename = $"preview_{resultFileName}",
+                        Size = thumbnailStream.Length,
+                        StorageType = StorageTypes.Local,
+                        Processing = true,
+                        Hash = hash,
+                        AccountId = _authorizationDataStorage.AccoutId
+                    });
+
+                    try
+                    {
+                        await _fileRepository.SaveAsync(thumbnailDbItem.Id, scaledThumbnail);
+                        await _storageDataProvider.UpdateFilePreviewIdAsync(videoDbItem.Id, thumbnailDbItem.Id);
+
+                        thumbnailDbItem.Processing = false;
+                        thumbnailDbItem.IsAvailable = true;
+                        await _storageDataProvider.UpdateAsync(thumbnailDbItem);
+                    }
+                    catch (Exception ex)
+                    {
+                        await _storageDataProvider.DeleteAsync(thumbnailDbItem.Id);
+                        logger.Warn(correlationId, null, methodName, $"Не удалось сохранить файл превью для видеофайла с id='{videoDbItem.Id}': {ex.Message}");
+                    }
+                }
+
+                videoDbItem.Processing = false;
+                videoDbItem.IsAvailable = true;
+                await _storageDataProvider.UpdateAsync(videoDbItem);
+
+                result = new UploadFileResult
+                {
+                    Id = videoDbItem.Id,
+                    Url = $"{serviceUrl}/{DOWNLOAD_METHOD}{videoDbItem.Id}"
+                };
+
+                logger.Debug(correlationId, null, methodName, "Method finished", null, execTime.Elapsed);
+                return new CommandResult<UploadFileResult>(result);
             }
-
-            file.Position = 0;
-            var newItem = await _storageDataProvider.CreateAsync(new FileInfoDto
-            {
-                ContentType = mimeType,
-                PreviewId = previewId,
-                Extension = extension,
-                Filename = resultFileName,
-                Size = contentLength ?? file.Length,
-                StorageType = useDbStorage ? StorageTypes.Db : StorageTypes.Local,
-                Processing = true,
-                Hash = hash,
-                AccountId = _authorizationDataStorage.AccoutId
-            });
-
-            try
-            {
-                await _fileRepository.SaveAsync(newItem.Id, file);
-            }
-            catch
-            {
-                await _storageDataProvider.DeleteAsync(newItem.Id);
-                throw;
-            }
-
-            newItem.Processing = false;
-            newItem.IsAvailable = true;
-            await _storageDataProvider.UpdateAsync(newItem);
-
-            result = new UploadFileResult
-            {
-                Id = newItem.Id,
-                Url = $"{serviceUrl}/{DOWNLOAD_METHOD}{newItem.Id}"
-            };
-
-            logger.Debug(correlationId, null, methodName, "Method finished", null, execTime.Elapsed);
-            return new CommandResult<UploadFileResult>(result);
         }
 
         public async Task<CommandResult> AttachFileContextAsync(Guid fileId, FileContext fileContext)

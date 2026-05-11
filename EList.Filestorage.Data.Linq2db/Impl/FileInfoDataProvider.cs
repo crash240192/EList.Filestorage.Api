@@ -101,6 +101,20 @@ namespace EList.Filestorage.Data.Linq2db.Impl
             }
         }
 
+        public async Task UpdateFilePreviewIdAsync(Guid fileId, Guid previewId)
+        {
+            using (var db = GetDataConnection())
+            {
+                var existingItem = await db.FileInfo.FirstOrDefaultAsync(i => i.Id == fileId);
+
+                if (existingItem == null)
+                    throw new Exception($"Не найден файл с id='{fileId}'");
+
+                existingItem.PreviewId = previewId;
+                await db.UpdateAsync(existingItem);
+            }
+        }
+
         public async Task DeleteAsync(Guid id)
         {
             using (var db = GetDataConnection())

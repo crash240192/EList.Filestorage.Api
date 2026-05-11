@@ -33,23 +33,24 @@ namespace EList.Filestorage.Core.Impl
                 : false;
         }
 
-        public async Task SaveAsync(Guid id, Stream stream)
+        public async Task<string> SaveAsync(Guid id, Stream stream)
         {
             var correlationId = _correlationIdProvider.Get();
             var execTime = Stopwatch.StartNew();
             var methodName = $"{LOGGER_NAME}{nameof(SaveAsync)}";
             logger.Debug(correlationId, null, methodName, null, "Method started");
 
-            if (useDbStorage)
-            {
-                await _dbStorage.SaveAsync(id, stream);
-            }
-            else
-            {
-                await _localStorage.SaveAsync(id, stream);
-            }
+            //if (useDbStorage)
+            //{
+            //    await _dbStorage.SaveAsync(id, stream);
+            //}
+            //else
+            //{
+                var result = await _localStorage.SaveAsync(id, stream);
+            //}
 
             logger.Debug(correlationId, null, methodName, "Method finished", null, execTime.Elapsed);
+            return result;
         }
 
 
@@ -64,9 +65,11 @@ namespace EList.Filestorage.Core.Impl
 
             if (_localStorage.CheckFileExists(id))
                 resultStream = _localStorage.Load(id);
+            else 
+                throw new Exception($"Файл '{id}' не найден в локальном хранилище");
 
-            if (resultStream == null && await _dbStorage.CheckFileExistAsync(id))
-                resultStream = await _dbStorage.LoadAsync(id);
+            //if (resultStream == null && await _dbStorage.CheckFileExistAsync(id))
+            //    resultStream = await _dbStorage.LoadAsync(id);
 
             logger.Debug(correlationId, null, methodName, "Method finished", null, execTime.Elapsed);
             return resultStream;
@@ -79,12 +82,14 @@ namespace EList.Filestorage.Core.Impl
             var methodName = $"{LOGGER_NAME}{nameof(DeleteAsync)}";
             logger.Debug(correlationId, null, methodName, "Method started");
 
-            if (await _dbStorage.CheckFileExistAsync(id))
-                await _dbStorage.DeleteAsync(id);
+            //if (await _dbStorage.CheckFileExistAsync(id))
+            //    await _dbStorage.DeleteAsync(id);
 
             if (_localStorage.CheckFileExists(id))
                 _localStorage.Delete(id);
-            
+            else
+                throw new Exception($"Файл '{id}' не найден в локальном хранилище");
+
             logger.Debug(correlationId, null, methodName, "Method finished", null, execTime.Elapsed);
         }
 
@@ -95,7 +100,8 @@ namespace EList.Filestorage.Core.Impl
             var methodName = $"{LOGGER_NAME}{nameof(DeleteAsync)}";
             logger.Debug(correlationId, null, methodName, null, "Method started");
 
-            var result = await _dbStorage.CheckFileExistAsync(id) || _localStorage.CheckFileExists(id);
+            //var result = await _dbStorage.CheckFileExistAsync(id) || _localStorage.CheckFileExists(id);
+            var result = _localStorage.CheckFileExists(id);
 
             logger.Debug(correlationId, null, methodName, "Method finished", null, execTime.Elapsed);
             return result;

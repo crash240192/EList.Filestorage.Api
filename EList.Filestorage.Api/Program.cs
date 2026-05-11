@@ -118,8 +118,6 @@ app.Lifetime.ApplicationStarted.Register(() =>
     //versionDataProvider.Configure(connectionStringName);
     storageDataProvider.Configure(connectionStringName);
     //VersionService.Configure(versionDataProvider);
-
-    VideoFilesHelper.ConfigureFFmpeg();
 });
 
 app.Lifetime.ApplicationStopping.Register(() =>

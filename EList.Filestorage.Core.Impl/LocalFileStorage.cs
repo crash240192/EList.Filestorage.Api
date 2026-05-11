@@ -40,7 +40,7 @@ namespace EList.Filestorage.Core.Impl
             return fileStream;
         }
 
-        public async Task SaveAsync(Guid id, Stream stream)
+        public async Task<string> SaveAsync(Guid id, Stream stream)
         {
             var correlationId = _correlationIdProvider.Get();
             var execTime = Stopwatch.StartNew();
@@ -53,12 +53,15 @@ namespace EList.Filestorage.Core.Impl
             }
 
             stream.Position = 0;
-            using (var fileStream = File.OpenWrite(GetFilePath(id)))
+
+            var filePath = GetFilePath(id);
+            using (var fileStream = File.OpenWrite(filePath))
             {
                 await stream.CopyToAsync(fileStream);
             }
 
             logger.Debug(correlationId, null, methodName, "Method finished", null, execTime.Elapsed);
+            return filePath;
         }
 
         public void Delete(Guid id)
