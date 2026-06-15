@@ -19,7 +19,8 @@ namespace EList.Filestorage.Core.Impl
 
         public LocalFileStorage(ICorrelationIdProvider correlationIdProvider)
         {
-            _storageDirectory = ConfigurationManager.AppSettings["storagePath"];
+            _storageDirectory = Environment.GetEnvironmentVariable("STORAGE_PATH")
+                ?? ConfigurationManager.AppSettings["storagePath"];
             _correlationIdProvider = correlationIdProvider;
         }
 

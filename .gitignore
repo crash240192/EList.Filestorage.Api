@@ -7,3 +7,4 @@ packages/*
 publish/*
 .idea
 FileStorage/*
+data/
