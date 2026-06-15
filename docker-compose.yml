@@ -1,0 +1,18 @@
+services:
+  filestorage-api:
+    build:
+      context: ..
+      dockerfile: ${FILESTORAGE_REPO_DIR:-elist.filestorage}/Dockerfile
+      args:
+        PROJECT_DIR: ${FILESTORAGE_REPO_DIR:-elist.filestorage}
+    image: crash240192/elist-filestorage-api
+    ports:
+      - "${FILESTORAGE_PORT:-8080}:80"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      STORAGE_PATH: /data/filestorage
+    volumes:
+      # Файлы хранятся на диске сервера, а не внутри контейнера.
+      # Путь на хосте можно изменить через переменную FILESTORAGE_DATA_PATH.
+      - ${FILESTORAGE_DATA_PATH:-./data/filestorage}:/data/filestorage
+    restart: unless-stopped
