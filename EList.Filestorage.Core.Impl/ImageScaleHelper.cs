@@ -73,27 +73,27 @@ namespace EList.Filestorage.Core.Impl
         }
         */
 
-        public static Stream ResizeImageByPercent(Stream inputStream, int percent)
+        public static Stream ResizeImageByPercent(Stream inputStream, int widthThreshold, int heightThreshold)
         {
             if (inputStream == null)
                 throw new ArgumentNullException(nameof(inputStream));
 
-            if (percent <= 0)
-                throw new ArgumentException("Процент должен быть больше 0", nameof(percent));
+            //if (percent <= 0)
+            //    throw new ArgumentException("Процент должен быть больше 0", nameof(percent));
 
-            // Сбрасываем позицию потока в начало (если возможно)
             if (inputStream.CanSeek)
-            {
-                inputStream.Position = 0;
-            }
+                inputStream.Position = 0;            
 
-            // Вариант 1: Простая загрузка (если поток в правильной позиции)
             try
             {
                 using (var image = Image.Load(inputStream))
                 {
-                    int newWidth = (int)(image.Width * percent / 100.0);
-                    int newHeight = (int)(image.Height * percent / 100.0);
+                    var widthPercent = widthThreshold * 100.0 / image.Width;
+                    var heightPercent = heightThreshold * 100.0 / image.Height;
+                    var minPercent = Math.Min(widthPercent, heightPercent);
+
+                    int newWidth = minPercent < 100.0 ? (int)(image.Width * minPercent/ 100.0) : image.Width;
+                    int newHeight = minPercent < 100.0 ? (int)(image.Height * minPercent / 100.0) : image.Height;
 
                     image.Mutate(x => x.Resize(newWidth, newHeight));
 
@@ -105,6 +105,28 @@ namespace EList.Filestorage.Core.Impl
                     outputStream.Position = 0;
 
                     return outputStream;
+                }
+            }
+            catch (Exception ex)
+            {
+                throw new Exception($"Ошибка загрузки изображения: {ex.Message}", ex);
+            }
+        }
+
+        public static Size GetImageSize(Stream inputStream)
+        {
+            if (inputStream == null)
+                throw new ArgumentNullException(nameof(inputStream));
+
+            if (inputStream.CanSeek)
+                inputStream.Position = 0;
+
+            try
+            {
+                using (var image = Image.Load(inputStream))
+                {
+                    var result = new Size(image.Width, image.Height);
+                    return result;
                 }
             }
             catch (Exception ex)

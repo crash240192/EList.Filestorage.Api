@@ -49,6 +49,8 @@ namespace EList.Filestorage.Core.Impl
         private readonly int photoPreviewScalePercent;
         private readonly int videoPreviewScalePercent;
         private readonly int videoTimeframeSeconds;
+        private readonly int widthThreshold;
+        private readonly int heightThreshold;
 
         public FileStorageService(ICorrelationIdProvider correlationIdProvider,
             IFileInfoDataProvider fileInfoDataProvider,
@@ -79,6 +81,13 @@ namespace EList.Filestorage.Core.Impl
             videoTimeframeSeconds = ConfigurationManager.AppSettings.Contains("preview:videoTimeFrameSeconds")
             ? Int32.Parse(ConfigurationManager.AppSettings["preview:videoTimeFrameSeconds"])
             : 1;
+
+            widthThreshold = ConfigurationManager.AppSettings.Contains("preview:threshold:width")
+            ? Int32.Parse(ConfigurationManager.AppSettings["preview:threshold:width"])
+            : 320;
+            heightThreshold = ConfigurationManager.AppSettings.Contains("preview:threshold:height")
+            ? Int32.Parse(ConfigurationManager.AppSettings["preview:threshold:height"])
+            : 240;
         }
 
         public async Task<CommandResult<UploadFileResult>> SaveFileAsync(IFormFile file)
@@ -92,7 +101,7 @@ namespace EList.Filestorage.Core.Impl
             }
         }
 
-        public async Task<CommandResult<UploadFileResult>> SaveFileAsync(string fileName, Stream file, long? contentLength = null)
+        public async Task<CommandResult<UploadFileResult>> SaveFileAsync(string fileName, Stream fileStream, long? contentLength = null)
         {
             var correlationId = _correlationIdProvider.Get();
             var execTime = Stopwatch.StartNew();
@@ -100,21 +109,21 @@ namespace EList.Filestorage.Core.Impl
 
             UploadFileResult result = null;
 
-            if (file == null)
-                throw new ArgumentNullException(nameof(file));
+            if (fileStream == null)
+                throw new ArgumentNullException(nameof(fileStream));
 
-            if ((contentLength ?? file.Length) == 0)
+            if ((contentLength ?? fileStream.Length) == 0)
                 return CommandResult<UploadFileResult>.Fail(1, $"Файл пуст.");
 
             if (maxFileSize != null)
             {
-                if ((contentLength ?? file.Length) > maxFileSize * 1024 * 1024)
+                if ((contentLength ?? fileStream.Length) > maxFileSize * 1024 * 1024)
                     return CommandResult<UploadFileResult>.Fail(1, $"Превышено ограничение ({maxFileSize} Мб) на размер загружаемого файла");
             }
 
             //TODO: Добавить проверку на соответствие передаваемого типа и mime
-            var mimeType = await MimeTypeUtility.GetMimeTypeFromFileAsync(file);
-            file.Position = 0;
+            var mimeType = await MimeTypeUtility.GetMimeTypeFromFileAsync(fileStream);
+            fileStream.Position = 0;
             var isImage = MimeTypeUtility.IsImage(mimeType);
             var isVideo = !isImage ? MimeTypeUtility.IsVideo(mimeType) : false;
 
@@ -153,34 +162,40 @@ namespace EList.Filestorage.Core.Impl
             }
 
 
-            file.Position = 0;
-            var hash = Md5Helper.GetHash(file);
+            fileStream.Position = 0;
+            var hash = Md5Helper.GetHash(fileStream);
             if (isImage)
             {
                 #region photo preview
-                var preview = ImageScaleHelper.ResizeImageByPercent(file, photoPreviewScalePercent);
-                var previewDbItem = await _storageDataProvider.CreateAsync(new FileInfoDto
+                FileInfoDto? previewDbItem = null;
+                Stream? previewStream = null;
+                var size = ImageScaleHelper.GetImageSize(fileStream);
+                if (size.Width > widthThreshold || size.Height > heightThreshold)
                 {
-                    ContentType = mimeType,
-                    Extension = extension,
-                    Filename = $"preview_{resultFileName}",
-                    Size = preview.Length,
-                    StorageType = StorageTypes.Local,
-                    Processing = true,
-                    Hash = hash,
-                    AccountId = _authorizationDataStorage.AccoutId
-                });
+                    previewStream = ImageScaleHelper.ResizeImageByPercent(fileStream, widthThreshold, heightThreshold);
+                    previewDbItem = await _storageDataProvider.CreateAsync(new FileInfoDto
+                    {
+                        ContentType = mimeType,
+                        Extension = extension,
+                        Filename = $"preview_{resultFileName}",
+                        Size = previewStream.Length,
+                        StorageType = StorageTypes.Local,
+                        Processing = true,                        
+                        Hash = hash,
+                        AccountId = _authorizationDataStorage.AccoutId
+                    });
+                }
                 #endregion
 
                 #region save photo 
-                file.Position = 0;
+                fileStream.Position = 0;
                 var photoDbItem = await _storageDataProvider.CreateAsync(new FileInfoDto
                 {
                     ContentType = mimeType,
-                    PreviewId = previewDbItem.Id,
+                    PreviewId = previewDbItem?.Id,
                     Extension = extension,
                     Filename = resultFileName,
-                    Size = contentLength ?? file.Length,
+                    Size = contentLength ?? fileStream.Length,
                     StorageType = useDbStorage ? StorageTypes.Db : StorageTypes.Local,
                     Processing = true,
                     Hash = hash,
@@ -190,13 +205,15 @@ namespace EList.Filestorage.Core.Impl
 
                 try
                 {
-                    await _fileRepository.SaveAsync(photoDbItem.Id, file);
-                    await _fileRepository.SaveAsync(previewDbItem.Id, preview);
+                    if (previewDbItem != null)
+                        await _fileRepository.SaveAsync(previewDbItem.Id, previewStream);
+                    await _fileRepository.SaveAsync(photoDbItem.Id, fileStream);
                 }
                 catch
                 {
                     await _storageDataProvider.DeleteAsync(photoDbItem.Id);
-                    await _storageDataProvider.DeleteAsync(previewDbItem.Id);
+                    if (previewDbItem?.Id != null)
+                        await _storageDataProvider.DeleteAsync(previewDbItem.Id);
                     throw;
                 }
 
@@ -204,6 +221,13 @@ namespace EList.Filestorage.Core.Impl
                 photoDbItem.IsAvailable = true;
                 await _storageDataProvider.UpdateAsync(photoDbItem);
 
+                if (previewDbItem!=null)
+                {
+                    previewDbItem.Processing = false;
+                    previewDbItem.IsAvailable = true;
+                    await _storageDataProvider.UpdateAsync(previewDbItem);
+                }
+                
                 result = new UploadFileResult
                 {
                     Id = photoDbItem.Id,
@@ -215,14 +239,14 @@ namespace EList.Filestorage.Core.Impl
             }
             else
             {
-                file.Position = 0;
+                fileStream.Position = 0;
                 var videoDbItem = await _storageDataProvider.CreateAsync(new FileInfoDto
                 {
                     ContentType = mimeType,
                     PreviewId = null,
                     Extension = extension,
                     Filename = resultFileName,
-                    Size = contentLength ?? file.Length,
+                    Size = contentLength ?? fileStream.Length,
                     StorageType = StorageTypes.Local,
                     Processing = true,
                     Hash = hash,
@@ -232,7 +256,7 @@ namespace EList.Filestorage.Core.Impl
                 string filePath;
                 try
                 {
-                    filePath = await _fileRepository.SaveAsync(videoDbItem.Id, file);
+                    filePath = await _fileRepository.SaveAsync(videoDbItem.Id, fileStream);
                 }
                 catch (Exception ex)
                 {
@@ -250,7 +274,8 @@ namespace EList.Filestorage.Core.Impl
                 var thumbnailStream = new MemoryStream();
                 ffMpeg.GetVideoThumbnail(filePath, thumbnailStream, videoTimeframeSeconds);
                 thumbnailStream.Position = 0;
-                var scaledThumbnail = ImageScaleHelper.ResizeImageByPercent(thumbnailStream, videoPreviewScalePercent);
+
+                var scaledThumbnail = ImageScaleHelper.ResizeImageByPercent(thumbnailStream, widthThreshold, heightThreshold);
                 if (thumbnailStream.Length == 0)
                 {
                     logger.Warn(correlationId, null, methodName, $"Не удалось извлечь превью для видеофайла с id='{videoDbItem.Id}'");
@@ -276,11 +301,11 @@ namespace EList.Filestorage.Core.Impl
                     try
                     {
                         await _fileRepository.SaveAsync(thumbnailDbItem.Id, scaledThumbnail);
-                        await _storageDataProvider.UpdateFilePreviewIdAsync(videoDbItem.Id, thumbnailDbItem.Id);
-
+                        
                         thumbnailDbItem.Processing = false;
                         thumbnailDbItem.IsAvailable = true;
                         await _storageDataProvider.UpdateAsync(thumbnailDbItem);
+                        videoDbItem.PreviewId = thumbnailDbItem.Id;
                     }
                     catch (Exception ex)
                     {
