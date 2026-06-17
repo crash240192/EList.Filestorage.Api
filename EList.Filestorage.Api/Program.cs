@@ -108,7 +108,7 @@ app.UseForwardedHeaders(new ForwardedHeadersOptions
 });
 
 var storageDataProvider = app.Services.GetRequiredService<IFileInfoDataProvider>();
-var backgroundUploader = app.Services.GetRequiredService<IBackgroundUploaderService>();
+var backgroundUploader = app.Services.GetRequiredService<IBackgroundWorkerService>();
 
 app.Lifetime.ApplicationStarted.Register(() =>
 {

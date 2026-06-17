@@ -31,7 +31,7 @@ namespace EList.Filestorage.DI
             mapping.AddSingleton<IAuthorizationDataStorage, AuthorizationDataStorage>();
 
             // Services
-            mapping.AddSingleton<IBackgroundUploaderService, BackgroundUploaderService>();
+            mapping.AddSingleton<IBackgroundWorkerService, BackgroundWorkerService>();
             mapping.AddSingleton<IAuthorizationService, AuthorizationService>();
             mapping.AddSingleton<IFileStorageService, FileStorageService>();
             mapping.AddSingleton<ILocalFileStorage, LocalFileStorage>();

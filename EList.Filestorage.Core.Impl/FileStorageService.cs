@@ -15,6 +15,7 @@ using Microsoft.AspNetCore.Http;
 using Newtonsoft.Json.Linq;
 using NLog;
 using System.Diagnostics;
+using System.Drawing;
 using System.IO;
 using FileInfo = EList.Filestorage.Model.Files.FileInfo;
 using FileStreamContainer = EList.Filestorage.Model.Files.FileStreamContainer;
@@ -34,8 +35,7 @@ namespace EList.Filestorage.Core.Impl
         private readonly IFileRepository _fileRepository;
         private readonly IAuthorizationDataStorage _authorizationDataStorage;
         //private readonly IFileTypeValidator _fileTypeValidator;
-        //private readonly IXDSStreamClient _xdsClient;
-
+        
         private const string METADATA_TAG_HASH = "hash";
         private const string METADATA_TAG_SIZE = "size";
         private const string METADATA_TAG_STORAGE_TYPE = "storage_type";
@@ -46,11 +46,9 @@ namespace EList.Filestorage.Core.Impl
         private readonly string serviceUrl;
         private long? maxFileSize;
         private readonly bool useDbStorage;
-        private readonly int photoPreviewScalePercent;
-        private readonly int videoPreviewScalePercent;
         private readonly int videoTimeframeSeconds;
-        private readonly int widthThreshold;
-        private readonly int heightThreshold;
+        private readonly Size previewThreshold;
+        private readonly Size downscaleThreshold;
 
         public FileStorageService(ICorrelationIdProvider correlationIdProvider,
             IFileInfoDataProvider fileInfoDataProvider,
@@ -64,30 +62,33 @@ namespace EList.Filestorage.Core.Impl
             _fileRepository = fileRepository;
             _authorizationDataStorage = authorizationDataStorage;
             //_fileTypeValidator = fileTypeValidator;
-            //_xdsClient = xdsClient;
-
+            
             serviceUrl = ConfigurationManager.AppSettings["localServiceUrl"];
             maxFileSize = ConfigurationManager.AppSettings.Contains("maxFileSize") ? int.Parse(ConfigurationManager.AppSettings["maxFileSize"]) : null;
             useDbStorage = ConfigurationManager.AppSettings.Contains("useDbStorage")
                ? bool.Parse(ConfigurationManager.AppSettings["useDbStorage"])
                : false;
 
-            photoPreviewScalePercent = ConfigurationManager.AppSettings.Contains("preview:photoScalePercent")
-            ? Int32.Parse(ConfigurationManager.AppSettings["preview:photoScalePercent"])
-            : 20;
-            videoPreviewScalePercent = ConfigurationManager.AppSettings.Contains("preview:videoScalePercent")
-            ? Int32.Parse(ConfigurationManager.AppSettings["preview:videoScalePercent"])
-            : 15;
             videoTimeframeSeconds = ConfigurationManager.AppSettings.Contains("preview:videoTimeFrameSeconds")
             ? Int32.Parse(ConfigurationManager.AppSettings["preview:videoTimeFrameSeconds"])
             : 1;
 
-            widthThreshold = ConfigurationManager.AppSettings.Contains("preview:threshold:width")
-            ? Int32.Parse(ConfigurationManager.AppSettings["preview:threshold:width"])
-            : 320;
-            heightThreshold = ConfigurationManager.AppSettings.Contains("preview:threshold:height")
-            ? Int32.Parse(ConfigurationManager.AppSettings["preview:threshold:height"])
-            : 240;
+            var widthThreshold = ConfigurationManager.AppSettings.Contains("preview:threshold:preview:width")
+            ? Int32.Parse(ConfigurationManager.AppSettings["preview:threshold:preview:width"])
+            : 800;
+            var heightThreshold = ConfigurationManager.AppSettings.Contains("preview:threshold:preview:height")
+            ? Int32.Parse(ConfigurationManager.AppSettings["preview:threshold:preview:height"])
+            : 600;
+            previewThreshold = new Size(widthThreshold, heightThreshold);
+
+            widthThreshold = ConfigurationManager.AppSettings.Contains("preview:threshold:downscale:width")
+            ? Int32.Parse(ConfigurationManager.AppSettings["preview:threshold:downscale:width"])
+            : 800;
+            heightThreshold = ConfigurationManager.AppSettings.Contains("preview:threshold:downscale:height")
+            ? Int32.Parse(ConfigurationManager.AppSettings["preview:threshold:downscale:height"])
+            : 600;
+            downscaleThreshold = new Size(widthThreshold, heightThreshold);
+
         }
 
         public async Task<CommandResult<UploadFileResult>> SaveFileAsync(IFormFile file)
@@ -170,9 +171,9 @@ namespace EList.Filestorage.Core.Impl
                 FileInfoDto? previewDbItem = null;
                 Stream? previewStream = null;
                 var size = ImageScaleHelper.GetImageSize(fileStream);
-                if (size.Width > widthThreshold || size.Height > heightThreshold)
+                if (size.Width > previewThreshold.Width || size.Height > previewThreshold.Height)
                 {
-                    previewStream = ImageScaleHelper.ResizeImageByPercent(fileStream, widthThreshold, heightThreshold);
+                    previewStream = ImageScaleHelper.ResizeImage(fileStream, previewThreshold.Width, previewThreshold.Height);
                     previewDbItem = await _storageDataProvider.CreateAsync(new FileInfoDto
                     {
                         ContentType = mimeType,
@@ -189,13 +190,15 @@ namespace EList.Filestorage.Core.Impl
 
                 #region save photo 
                 fileStream.Position = 0;
+                var scaledStream = ImageScaleHelper.ResizeImage(fileStream, downscaleThreshold.Width, downscaleThreshold.Height);
+                scaledStream.Position = 0;
                 var photoDbItem = await _storageDataProvider.CreateAsync(new FileInfoDto
                 {
                     ContentType = mimeType,
                     PreviewId = previewDbItem?.Id,
                     Extension = extension,
                     Filename = resultFileName,
-                    Size = contentLength ?? fileStream.Length,
+                    Size = contentLength ?? scaledStream.Length,
                     StorageType = useDbStorage ? StorageTypes.Db : StorageTypes.Local,
                     Processing = true,
                     Hash = hash,
@@ -207,7 +210,7 @@ namespace EList.Filestorage.Core.Impl
                 {
                     if (previewDbItem != null)
                         await _fileRepository.SaveAsync(previewDbItem.Id, previewStream);
-                    await _fileRepository.SaveAsync(photoDbItem.Id, fileStream);
+                    await _fileRepository.SaveAsync(photoDbItem.Id, scaledStream);
                 }
                 catch
                 {
@@ -275,7 +278,7 @@ namespace EList.Filestorage.Core.Impl
                 ffMpeg.GetVideoThumbnail(filePath, thumbnailStream, videoTimeframeSeconds);
                 thumbnailStream.Position = 0;
 
-                var scaledThumbnail = ImageScaleHelper.ResizeImageByPercent(thumbnailStream, widthThreshold, heightThreshold);
+                var scaledThumbnail = ImageScaleHelper.ResizeImage(thumbnailStream, previewThreshold.Width, previewThreshold.Height);
                 if (thumbnailStream.Length == 0)
                 {
                     logger.Warn(correlationId, null, methodName, $"Не удалось извлечь превью для видеофайла с id='{videoDbItem.Id}'");

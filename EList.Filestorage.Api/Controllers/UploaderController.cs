@@ -20,11 +20,11 @@ namespace EList.Filestorage.Api.Controllers
         private const string LOGGER_NAME = "EList.Filestorage.Api.Controllers.UploaderController.";
         #endregion
 
-        private readonly IBackgroundUploaderService _backgroundUploaderService;
+        private readonly IBackgroundWorkerService _backgroundUploaderService;
         private readonly ICorrelationIdProvider _correlationIdProvider;
 
         public UploaderController(ICorrelationIdProvider  correlationIdProvider,
-            IBackgroundUploaderService backgroundUploaderService)
+            IBackgroundWorkerService backgroundUploaderService)
         {
             _backgroundUploaderService = backgroundUploaderService;
             _correlationIdProvider = correlationIdProvider;

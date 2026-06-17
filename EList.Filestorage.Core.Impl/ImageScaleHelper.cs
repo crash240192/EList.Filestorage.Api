@@ -73,7 +73,7 @@ namespace EList.Filestorage.Core.Impl
         }
         */
 
-        public static Stream ResizeImageByPercent(Stream inputStream, int widthThreshold, int heightThreshold)
+        public static Stream ResizeImage(Stream inputStream, int widthThreshold, int heightThreshold)
         {
             if (inputStream == null)
                 throw new ArgumentNullException(nameof(inputStream));

@@ -1,6 +1,6 @@
-﻿namespace EList.Filestorage.BackgroundUploader
+﻿namespace EList.Filestorage.BackgroundWorker
 {
-    public interface IBackgroundUploaderService
+    public interface IBackgroundWorkerService
     {
         public bool Active { get; }
         

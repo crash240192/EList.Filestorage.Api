@@ -10,15 +10,15 @@ using NLog;
 using System.Collections.Concurrent;
 using ILogger = NLog.ILogger;
 
-namespace EList.Filestorage.BackgroundUploader.Impl
+namespace EList.Filestorage.BackgroundWorker.Impl
 {
-    public class BackgroundUploaderService : IBackgroundUploaderService
+    public class BackgroundWorkerService : IBackgroundWorkerService
     {
         #region private readonly & constructor
 
         private static readonly ILogger log = LogManager.GetCurrentClassLogger();
         private static readonly ILoggerWrapper logger = new NLogLoggerWrapper(log);
-        private const string LOGGER_NAME = "EList.Filestorage.BackgroundUploader.Impl.";
+        private const string LOGGER_NAME = "EList.Filestorage.BackgroundWorkerService.Impl.";
 
         private bool _isStarted;
 
@@ -33,7 +33,7 @@ namespace EList.Filestorage.BackgroundUploader.Impl
         private readonly IFileInfoDataProvider _fileInfoDataProvider;
         //private readonly IXDSStreamClient _xdsClient;
 
-        public BackgroundUploaderService(IFileInfoDataProvider storageDataProvider,
+        public BackgroundWorkerService(IFileInfoDataProvider storageDataProvider,
             IFileRepository fileRepository)
         {
             _correlationIdProvider = new RandomCorrelationIdProvider();
@@ -152,53 +152,9 @@ namespace EList.Filestorage.BackgroundUploader.Impl
 
                     while (queue.TryDequeue(out FileInfoDto fileInfo))
                     {
-                        // N3 legacy (xds)
                         try
                         {
-                        //    logger.Debug(correlationId, null, methodName, null, "Process method has started");
 
-                        //    var resultFileName = $"{fileInfo.Filename}.{fileInfo.Extension}";
-
-                        //    var localFileExists = AsyncHelper.RunSync(() => _fileRepository.CheckFileExistsAsync(fileInfo.Id));
-                        //    if (!localFileExists)
-                        //    {
-                        //        fileInfo.IsAvailable = false;
-                        //        AsyncHelper.RunSync(() => _fileInfoDataProvider.UpdateAsync(fileInfo));
-                        //        throw new Exception($"Файл с id='{fileInfo.Id}' не найден в локальном хранилище");
-                        //    }
-
-                        //    fileInfo.Processing = true;
-                        //    AsyncHelper.RunSync(() => _fileInfoDataProvider.UpdateAsync(fileInfo));
-
-                        //    logger.Debug(correlationId, null, methodName, null, "Запуск отправки файла в xds", null);
-                        //    var fileStream = AsyncHelper.RunSync(() => _fileRepository.LoadAsync(fileInfo.Id));
-                        //    logger.Debug(correlationId, null, methodName, null, "Файл отправлен", null);
-
-                        //    var xdsFileId = AsyncHelper.RunSync(() => _xdsClient.UploadFileAsync(fileStream, resultFileName));
-
-                        //    fileStream.Close();
-
-                        //    logger.Debug(correlationId, null, methodName, null, "Сверяем хэш", null);
-                        //    var xdsFileInfo = AsyncHelper.RunSync(() => _xdsClient.GetFileInfoAsync(xdsFileId));
-                        //    var hash = xdsFileInfo?.Metadata?.FirstOrDefault(i => i.Key == "hash");
-
-                        //    if (hash != null)
-                        //    {
-                        //        if (hash.Value != fileInfo.Hash)
-                        //            throw new Exception("Хеш файла не сопадает");
-                        //    }
-
-                        //    fileInfo.XdsId = xdsFileId;
-                        //    fileInfo.StorageType = StorageTypes.Xds;
-                        //    AsyncHelper.RunSync(() => _fileInfoDataProvider.UpdateAsync(fileInfo));
-
-                        //    logger.Debug(correlationId, null, methodName, null, "Удаляем файл из локального хранилища", null);
-                        //    _fileRepository.DeleteAsync(fileInfo.Id);
-
-                        //    fileInfo.Processing = false;
-                        //    AsyncHelper.RunSync(() => _fileInfoDataProvider.UpdateAsync(fileInfo));
-
-                        //    logger.Debug(correlationId, null, methodName, null, "Process method has finished successfully", null);
                         }
                         catch (Exception ex)
                         {
