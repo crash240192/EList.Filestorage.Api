@@ -11,7 +11,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\EList.Filestorage.BackgroundUploader\EList.Filestorage.BackgroundUploader.csproj" />
+    <ProjectReference Include="..\EList.Filestorage.BackgroundUploader\EList.Filestorage.BackgroundWorker.csproj" />
     <ProjectReference Include="..\EList.Filestorage.Core\EList.Filestorage.Core.csproj" />
     <ProjectReference Include="..\EList.Filestorage.Data.Linq2db\EList.Filestorage.Data.Linq2db.csproj" />
   </ItemGroup>

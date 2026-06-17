@@ -24,7 +24,7 @@
 
 	<ItemGroup>
 		<ProjectReference Include="..\..\EList.Common\EList.Common\EList.Common.csproj" />
-		<ProjectReference Include="..\EList.Filestorage.BackgroundUploader.Impl\EList.Filestorage.BackgroundUploader.Impl.csproj" />
+		<ProjectReference Include="..\EList.Filestorage.BackgroundUploader.Impl\EList.Filestorage.BackgroundWorker.Impl.csproj" />
 		<ProjectReference Include="..\EList.Filestorage.DI\EList.Filestorage.DI.csproj" />
 		<ProjectReference Include="..\EList.Filestorage.Model\EList.Filestorage.Model.csproj" />
 	</ItemGroup>

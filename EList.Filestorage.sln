@@ -19,9 +19,9 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "EList.Filestorage.Core", "E
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "EList.Filestorage.Core.Impl", "EList.Filestorage.Core.Impl\EList.Filestorage.Core.Impl.csproj", "{43793E6E-331E-4687-8C64-F301335990AC}"
 EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "EList.Filestorage.BackgroundUploader.Impl", "EList.Filestorage.BackgroundUploader.Impl\EList.Filestorage.BackgroundUploader.Impl.csproj", "{F4C90E26-7CCC-46AD-A139-DED4393478DA}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "EList.Filestorage.BackgroundWorker.Impl", "EList.Filestorage.BackgroundUploader.Impl\EList.Filestorage.BackgroundWorker.Impl.csproj", "{F4C90E26-7CCC-46AD-A139-DED4393478DA}"
 EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "EList.Filestorage.BackgroundUploader", "EList.Filestorage.BackgroundUploader\EList.Filestorage.BackgroundUploader.csproj", "{87364EDE-7FE7-47A6-86D4-CF7C113D5876}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "EList.Filestorage.BackgroundWorker", "EList.Filestorage.BackgroundUploader\EList.Filestorage.BackgroundWorker.csproj", "{87364EDE-7FE7-47A6-86D4-CF7C113D5876}"
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "EList.Common", "..\EList.Common\EList.Common\EList.Common.csproj", "{793D68D5-EA3C-47C3-B7E6-0747A1812B1E}"
 EndProject
