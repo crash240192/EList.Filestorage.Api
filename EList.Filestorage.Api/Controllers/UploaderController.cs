@@ -1,7 +1,7 @@
 ﻿using EList.Common.CorrelationId;
 using EList.Common.Logger;
 using EList.Common.Models;
-using EList.Filestorage.BackgroundUploader;
+using EList.Filestorage.BackgroundWorker;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using NLog;
@@ -120,7 +120,7 @@ namespace EList.Filestorage.Api.Controllers
                 if (_backgroundUploaderService.Active)
                     return CommandResult.Fail(1, "Запуск единичной итерации выгрузки возможна только при остановленном выгрузчике");
 
-                _backgroundUploaderService.SendToXds();
+                _backgroundUploaderService.Process();
                 logger.Debug(correlationId, null, methodName, "Method finished", null, execTime.Elapsed);
                 return CommandResult.OK;
             }

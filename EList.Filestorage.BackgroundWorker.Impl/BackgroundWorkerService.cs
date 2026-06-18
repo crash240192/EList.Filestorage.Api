@@ -31,7 +31,6 @@ namespace EList.Filestorage.BackgroundWorker.Impl
         private readonly ICorrelationIdProvider _correlationIdProvider;
         private readonly IFileRepository _fileRepository;
         private readonly IFileInfoDataProvider _fileInfoDataProvider;
-        //private readonly IXDSStreamClient _xdsClient;
 
         public BackgroundWorkerService(IFileInfoDataProvider storageDataProvider,
             IFileRepository fileRepository)
@@ -39,30 +38,29 @@ namespace EList.Filestorage.BackgroundWorker.Impl
             _correlationIdProvider = new RandomCorrelationIdProvider();
             _fileInfoDataProvider = storageDataProvider;
             _fileRepository = fileRepository;
-            //_xdsClient = xdsClient;
 
             var methodName = $"{LOGGER_NAME}ctor";
             var correlationId = _correlationIdProvider.Get();
 
-            bool timerIsParsed = int.TryParse(ConfigurationManager.AppSettings["backgroundUploader:processIntervalMinutes"], out _processIntervalMinutes);
+            bool timerIsParsed = int.TryParse(ConfigurationManager.AppSettings["BackgroundWorker:processIntervalMinutes"], out _processIntervalMinutes);
             if (!timerIsParsed)
                 _processIntervalMinutes = 15;
             logger.Info(correlationId, null, methodName, null, $"processIntervalMinutes = {_processIntervalMinutes}", null);
 
-            var maxThreadsIsParsed = int.TryParse(ConfigurationManager.AppSettings["backgroundUploader:maxThreads"], out _maxThreads);
+            var maxThreadsIsParsed = int.TryParse(ConfigurationManager.AppSettings["BackgroundWorker:maxThreads"], out _maxThreads);
             if (!maxThreadsIsParsed)
                 _maxThreads = 1;
             logger.Info(correlationId, null, methodName, null, $"maxThreads = {_maxThreads}", null);
 
-            if (ConfigurationManager.AppSettings.Contains("backgroundUploader:active"))
-                _active = bool.Parse(ConfigurationManager.AppSettings["backgroundUploader:active"]);
+            if (ConfigurationManager.AppSettings.Contains("BackgroundWorker:active"))
+                _active = bool.Parse(ConfigurationManager.AppSettings["BackgroundWorker:active"]);
             else 
                 _active = true;
 
             JobManager.JobException += (obj) =>
             {
                 logger.Error(correlationId, null, methodName,
-                    $"BackgroundUploader JobManager error: {obj.Exception.Message}", null, obj.Exception, null);
+                    $"BackgroundWorker JobManager error: {obj.Exception.Message}", null, obj.Exception, null);
             };
         }
 
@@ -98,7 +96,7 @@ namespace EList.Filestorage.BackgroundWorker.Impl
                 _isStarted = true;
 
                 var reg = new Registry();
-                var schedule = reg.Schedule(SendToXds);
+                var schedule = reg.Schedule(Process);
                 schedule.ToRunEvery(_processIntervalMinutes).Minutes();
                 JobManager.Initialize(reg);
                 JobManager.Start();
@@ -133,9 +131,9 @@ namespace EList.Filestorage.BackgroundWorker.Impl
             }
         }
 
-        public void SendToXds()
+        public void Process()
         {
-            var methodName = $"{LOGGER_NAME}{nameof(SendToXds)}";
+            var methodName = $"{LOGGER_NAME}{nameof(Process)}";
             var correlationId = _correlationIdProvider.Get();
 
             try
@@ -159,7 +157,7 @@ namespace EList.Filestorage.BackgroundWorker.Impl
                         catch (Exception ex)
                         {
                             logger.Error(correlationId, null, methodName,
-                                    $"{nameof(SendToXds)} method has failed: {ex.Message}", null, ex);
+                                    $"{nameof(Process)} method has failed: {ex.Message}", null, ex);
                             throw;
                         }
                         finally

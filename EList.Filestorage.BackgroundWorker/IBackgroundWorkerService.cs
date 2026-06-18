@@ -8,7 +8,7 @@
         void ManualStop();
 
         void Start();
-        void SendToXds();
+        void Process();
         void Stop();
     }
 }

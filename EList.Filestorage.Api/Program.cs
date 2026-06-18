@@ -1,20 +1,18 @@
+using System.Text.Json.Serialization;
 using EList.Api.Filtres;
 using EList.Common.Constants;
 using EList.Common.DI;
 using EList.Common.Models;
-using EList.Common.Support;
 using EList.Filestorage.Api.Infrastructure;
 using EList.Filestorage.Api.Middleware;
-using EList.Filestorage.BackgroundUploader;
+using EList.Filestorage.BackgroundWorker;
 using EList.Filestorage.Data.Linq2db.Interfaces;
 using EList.Filestorage.DI;
-using FileTypeValidator;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Mvc;
 using Newtonsoft.Json;
-using System.Text.Json.Serialization;
 using ConfigurationManager = EList.Common.Configuration.ConfigurationManager;
 
 var builder = WebApplication.CreateBuilder(args);

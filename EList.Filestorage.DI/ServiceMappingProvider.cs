@@ -3,8 +3,8 @@ using EList.Common.DI;
 using EList.Common.Encryption;
 using EList.Filestorage.Data.Linq2db.Impl;
 using EList.Filestorage.Data.Linq2db.Interfaces;
-using EList.Filestorage.BackgroundUploader;
-using EList.Filestorage.BackgroundUploader.Impl;
+using EList.Filestorage.BackgroundWorker;
+using EList.Filestorage.BackgroundWorker.Impl;
 using EList.Filestorage.Core;
 using EList.Filestorage.Core.Impl;
 
