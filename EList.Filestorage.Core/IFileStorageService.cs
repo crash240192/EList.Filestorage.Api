@@ -11,5 +11,6 @@ namespace EList.Filestorage.Core
         Task<CommandResult> AttachFileContextAsync(Guid fileId, FileContext fileContext);
         Task<FileStreamContainer> GetFileAsync(Guid id, bool? fullSize = false);
         Task<CommandResult<Model.Files.FileInfo>> GetFileInfoAsync(Guid id);
+        Task<CommandResult> DeleteFileAsync(Guid id);
     }
 }

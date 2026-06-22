@@ -149,7 +149,7 @@ namespace EList.Filestorage.Api.Controllers
         /// Получить метаданные файла
         /// </summary>
         [HttpGet("info/{id}")]
-        public async Task<CommandResult<Model.Files.FileInfo>> GetFileInfoAsync([FromRoute] Guid id)
+        public async Task<CommandResult<Model.Files.FileInfo>> GetFileInfoAsync(Guid id)
         {
             var correlationId = _correlationIdProvider.Get();
             var execTime = Stopwatch.StartNew();
@@ -158,6 +158,29 @@ namespace EList.Filestorage.Api.Controllers
             try
             {
                 var result = await _fileStorageService.GetFileInfoAsync(id);
+                logger.Debug(correlationId, null, methodName, "Method finished", null, execTime.Elapsed);
+                return result;
+            }
+            catch (Exception ex)
+            {
+                logger.Error(correlationId, null, methodName, $"Method failed: {ex.Message}", execTime.Elapsed, ex);
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// Удаление файла из хранилища
+        /// </summary>
+        [HttpDelete("delete/{id}")]
+        public async Task<CommandResult> DeleteFileInfoAsync(Guid id)
+        {
+            var correlationId = _correlationIdProvider.Get();
+            var execTime = Stopwatch.StartNew();
+            var methodName = $"{LOGGER_NAME}{nameof(GetFileInfoAsync)}";
+            logger.Debug(correlationId, null, methodName, null, "Method started");
+            try
+            {
+                var result = await _fileStorageService.DeleteFileAsync(id);
                 logger.Debug(correlationId, null, methodName, "Method finished", null, execTime.Elapsed);
                 return result;
             }

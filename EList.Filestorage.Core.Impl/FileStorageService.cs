@@ -6,8 +6,6 @@ using EList.Common.Support;
 using EList.Filestorage.Data.Linq2db.Dto;
 using EList.Filestorage.Data.Linq2db.Interfaces;
 using EList.Filestorage.Model.Files;
-using FileTypeValidator.Infrastructure.Interfaces;
-
 //using FileTypeChecker;
 //using FileTypeChecker.Abstracts;
 //using FileTypeChecker.Web.Attributes;
@@ -397,7 +395,7 @@ namespace EList.Filestorage.Core.Impl
             };
         }
 
-        public async Task<CommandResult<Model.Files.FileInfo>> GetFileInfoAsync(Guid id)
+        public async Task<CommandResult<FileInfo>> GetFileInfoAsync(Guid id)
         {
             var correlationId = _correlationIdProvider.Get();
             var execTime = Stopwatch.StartNew();
@@ -407,8 +405,7 @@ namespace EList.Filestorage.Core.Impl
             if (fileInfo == null)
                 return CommandResult<Model.Files.FileInfo>.Fail(1, $"Не найдена информация о файле с id='{id}'");
 
-            Model.Files.FileInfo result;
-
+            FileInfo result;
             var mimeType = MimeTypeUtility.FileExtensionToMimeType(fileInfo.Extension);
 
             var fileExists = await _fileRepository.CheckFileExistsAsync(id);
@@ -424,6 +421,7 @@ namespace EList.Filestorage.Core.Impl
                 Id = fileInfo.Id,
                 Title = fileInfo.Filename,
                 Url = $"{serviceUrl}/{DOWNLOAD_METHOD}{fileInfo.Id}",
+                AccountId = fileInfo.AccountId,
                 MimeType = mimeType,
                 Metadata = new List<Metadata>
                     {
@@ -455,9 +453,29 @@ namespace EList.Filestorage.Core.Impl
                     }
             };
 
+            logger.Debug(correlationId, null, methodName, "Method finished", null, execTime.Elapsed);
+            return new CommandResult<FileInfo>(result);
+        }
+
+        public async Task<CommandResult> DeleteFileAsync(Guid id)
+        {
+            var correlationId = _correlationIdProvider.Get();
+            var execTime = Stopwatch.StartNew();
+            var methodName = $"{LOGGER_NAME}{nameof(DeleteFileAsync)}";
+
+            var fileInfo = await _storageDataProvider.GetAsync(id);
+            if (fileInfo == null)
+                return CommandResult.Fail(1, $"Не найдена информация о файле с id='{id}'");
+
+            var fileExists = await _fileRepository.CheckFileExistsAsync(id);
+
+            if (fileExists)
+                await _fileRepository.DeleteAsync(id);
+
+            await _storageDataProvider.DeleteAsync(id);
 
             logger.Debug(correlationId, null, methodName, "Method finished", null, execTime.Elapsed);
-            return new CommandResult<Model.Files.FileInfo>(result);
+            return CommandResult.OK;
         }
     }
 }
