@@ -342,9 +342,14 @@ namespace EList.Filestorage.Core.Impl
             if (string.IsNullOrWhiteSpace(fileContext.Context))
                 return CommandResult.Fail(1, "Поле 'context' не должно быть пустым");
 
+            var contextText = fileContext.Context.Trim();
+            const string coverFocusPrefix = "elist-cover-focus:";
+            if (contextText.StartsWith(coverFocusPrefix, StringComparison.OrdinalIgnoreCase))
+                contextText = contextText.Substring(coverFocusPrefix.Length).Trim();
+
             try
             {
-                var context = JObject.Parse(fileContext.Context);
+                _ = JObject.Parse(contextText);
             }
             catch
             {
@@ -355,7 +360,7 @@ namespace EList.Filestorage.Core.Impl
             if (fileInfo == null)
                 return CommandResult.Fail(1, $"Не удалось найти информацию о файле с 'id={fileId}'");
 
-            fileInfo.Context = fileContext.Context;
+            fileInfo.Context = contextText;
 
             await _storageDataProvider.UpdateAsync(fileInfo);
 
@@ -420,6 +425,7 @@ namespace EList.Filestorage.Core.Impl
             {
                 Id = fileInfo.Id,
                 Title = fileInfo.Filename,
+                Description = fileInfo.Context,
                 Url = $"{serviceUrl}/{DOWNLOAD_METHOD}{fileInfo.Id}",
                 AccountId = fileInfo.AccountId,
                 MimeType = mimeType,
@@ -452,6 +458,26 @@ namespace EList.Filestorage.Core.Impl
                         }
                     }
             };
+
+            if (!string.IsNullOrWhiteSpace(fileInfo.Context))
+            {
+                try
+                {
+                    var contextObj = JObject.Parse(fileInfo.Context);
+                    foreach (var prop in contextObj.Properties())
+                    {
+                        result.Metadata.Add(new Metadata
+                        {
+                            Key = prop.Name,
+                            Value = prop.Value?.ToString()
+                        });
+                    }
+                }
+                catch
+                {
+                    // Context may be non-JSON legacy data; Description still carries the raw value.
+                }
+            }
 
             logger.Debug(correlationId, null, methodName, "Method finished", null, execTime.Elapsed);
             return new CommandResult<FileInfo>(result);
