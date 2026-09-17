@@ -27,7 +27,7 @@ namespace EList.Filestorage.Core.Impl
         public void SetServiceRequest()
         {
             Token = Guid.Empty;
-            JwtHash = null;
+            JwtHash = string.Empty;
             AccoutId = null;
             IsServiceRequest = true;
         }

@@ -124,11 +124,8 @@ namespace EList.Filestorage.Api.Controllers
 
         /// <summary>
         /// Скачать файл из хранилища.
-        /// Guest-friendly for now (Public). Private/visibility enforcement is a later stage.
+        /// Public — без логина; Private — только авторизованный пользователь или service-token.
         /// </summary>
-        /// <param name="fileId"></param>
-        /// <param name="fullSize"></param>
-        /// <returns></returns>
         [HttpGet("download/{fileId}")]
         [AllowAnonymous]
         public async Task<IActionResult> DownloadFileAsync(Guid fileId, [FromHeader(Name = "FullSize")] bool? fullSize)
@@ -139,6 +136,10 @@ namespace EList.Filestorage.Api.Controllers
             logger.Debug(correlationId, null, methodName, null, "Method started");
             try
             {
+                var access = await _fileStorageService.AssertCanDownloadAsync(fileId);
+                if (!access.Success)
+                    return Unauthorized(access);
+
                 var result = await _fileStorageService.GetFileAsync(fileId, fullSize);
                 logger.Debug(correlationId, null, methodName, "Method finished", null, execTime.Elapsed);
                 return File(result.Stream, result.ContentType, result.FileName);
@@ -147,6 +148,29 @@ namespace EList.Filestorage.Api.Controllers
             {
                 logger.Error(correlationId, null, methodName, $"Method failed: {ex.Message}", execTime.Elapsed, ex);
                 throw;
+            }
+        }
+
+        /// <summary>
+        /// Batch-обновление visibility (Public/Private). Service-token или владелец файлов.
+        /// </summary>
+        [HttpPost("setVisibility")]
+        public async Task<CommandResult> SetFilesVisibilityAsync([FromBody] SetFilesVisibilityRequest request)
+        {
+            var correlationId = _correlationIdProvider.Get();
+            var execTime = Stopwatch.StartNew();
+            var methodName = $"{LOGGER_NAME}{nameof(SetFilesVisibilityAsync)}";
+            logger.Debug(correlationId, null, methodName, null, "Method started");
+            try
+            {
+                var result = await _fileStorageService.SetFilesVisibilityAsync(request);
+                logger.Debug(correlationId, null, methodName, "Method finished", null, execTime.Elapsed);
+                return result;
+            }
+            catch (Exception ex)
+            {
+                logger.Error(correlationId, null, methodName, $"Method failed: {ex.Message}", execTime.Elapsed, ex);
+                return CommandResult.Fail(1, ex.Message);
             }
         }
 

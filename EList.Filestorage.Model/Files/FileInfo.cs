@@ -8,6 +8,7 @@
         public string Description { get; set; }
         public List<Metadata> Metadata { get; set; }
         public Guid? AccountId { get; set; }
+        public FileVisibility Visibility { get; set; }
         public string Url { get; set; }
     }
 

@@ -10,6 +10,7 @@ namespace EList.Filestorage.Data.Linq2db.Interfaces
         Task<FileInfoDto> CreateAsync(FileInfoDto item);
         Task<FileInfoDto> UpdateAsync(FileInfoDto item);
         Task UpdateFilePreviewIdAsync(Guid fileId, Guid previewId);
+        Task UpdateVisibilityAsync(IReadOnlyList<Guid> fileIds, short visibility);
         Task DeleteAsync(Guid id);
         Task<List<FileInfoDto>> GetOldestAvailableLocalFileInfosAsync(int? take = 0);
     }

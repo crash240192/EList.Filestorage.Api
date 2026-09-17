@@ -8,10 +8,12 @@
 
   <ItemGroup>
     <None Remove="migrations\Baseline.sql" />
+    <None Remove="migrations\M202609171955_file_visibility.sql" />
   </ItemGroup>
 
   <ItemGroup>
     <EmbeddedResource Include="migrations\Baseline.sql" />
+    <EmbeddedResource Include="migrations\M202609171955_file_visibility.sql" />
   </ItemGroup>
 
   <ItemGroup>

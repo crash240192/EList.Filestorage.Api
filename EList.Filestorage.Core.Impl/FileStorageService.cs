@@ -181,7 +181,8 @@ namespace EList.Filestorage.Core.Impl
                         StorageType = StorageTypes.Local,
                         Processing = true,                        
                         Hash = hash,
-                        AccountId = _authorizationDataStorage.AccoutId
+                        AccountId = _authorizationDataStorage.AccoutId,
+                        Visibility = (short)FileVisibility.Private
                     });
                 }
                 #endregion
@@ -200,7 +201,8 @@ namespace EList.Filestorage.Core.Impl
                     StorageType = useDbStorage ? StorageTypes.Db : StorageTypes.Local,
                     Processing = true,
                     Hash = hash,
-                    AccountId = _authorizationDataStorage.AccoutId
+                    AccountId = _authorizationDataStorage.AccoutId,
+                    Visibility = (short)FileVisibility.Private
                 });
                 #endregion
 
@@ -251,7 +253,8 @@ namespace EList.Filestorage.Core.Impl
                     StorageType = StorageTypes.Local,
                     Processing = true,
                     Hash = hash,
-                    AccountId = _authorizationDataStorage.AccoutId
+                    AccountId = _authorizationDataStorage.AccoutId,
+                    Visibility = (short)FileVisibility.Private
                 });
 
                 string filePath;
@@ -296,7 +299,8 @@ namespace EList.Filestorage.Core.Impl
                         StorageType = StorageTypes.Local,
                         Processing = true,
                         Hash = hash,
-                        AccountId = _authorizationDataStorage.AccoutId
+                        AccountId = _authorizationDataStorage.AccoutId,
+                        Visibility = (short)FileVisibility.Private
                     });
 
                     try
@@ -361,11 +365,64 @@ namespace EList.Filestorage.Core.Impl
                 return CommandResult.Fail(1, $"Не удалось найти информацию о файле с 'id={fileId}'");
 
             fileInfo.Context = contextText;
+            if (fileContext.Visibility != null)
+                fileInfo.Visibility = (short)fileContext.Visibility.Value;
 
             await _storageDataProvider.UpdateAsync(fileInfo);
 
             logger.Debug(correlationId, null, methodName, "Method finished", null, execTime.Elapsed);
             return CommandResult.OK;
+        }
+
+        public async Task<CommandResult> SetFilesVisibilityAsync(SetFilesVisibilityRequest request)
+        {
+            var correlationId = _correlationIdProvider.Get();
+            var execTime = Stopwatch.StartNew();
+            var methodName = $"{LOGGER_NAME}{nameof(SetFilesVisibilityAsync)}";
+
+            if (request == null || request.FileIds == null || request.FileIds.Count == 0)
+                return CommandResult.Fail(1, "Список fileIds не должен быть пустым");
+
+            var ids = request.FileIds.Where(id => id != Guid.Empty).Distinct().ToList();
+            if (ids.Count == 0)
+                return CommandResult.Fail(1, "Список fileIds не должен быть пустым");
+
+            // Service-token: any files. User token: only own files.
+            if (!_authorizationDataStorage.IsServiceRequest)
+            {
+                if (_authorizationDataStorage.AccoutId == null)
+                    return CommandResult.Fail(1, "Нет прав на изменение visibility");
+
+                var existing = await _storageDataProvider.GetListAsync(ids);
+                if (existing.Any(f => f.AccountId != _authorizationDataStorage.AccoutId))
+                    return CommandResult.Fail(1, "Нет прав на изменение visibility чужих файлов");
+            }
+
+            await _storageDataProvider.UpdateVisibilityAsync(ids, (short)request.Visibility);
+
+            logger.Debug(correlationId, null, methodName, "Method finished", null, execTime.Elapsed);
+            return CommandResult.OK;
+        }
+
+        public async Task<CommandResult> AssertCanDownloadAsync(Guid id)
+        {
+            var fileInfo = await _storageDataProvider.GetAsync(id);
+            if (fileInfo == null)
+                return CommandResult.Fail(1, $"Файл с id='{id}' отсутствует или не найден");
+
+            var visibility = (FileVisibility)fileInfo.Visibility;
+            if (visibility == FileVisibility.Public)
+                return CommandResult.OK;
+
+            // Private: authenticated user (any registered token) or service-token.
+            // Full album/event ACL stays in elist.api; filestorage only blocks anonymous UUID guessing.
+            if (_authorizationDataStorage.IsServiceRequest)
+                return CommandResult.OK;
+
+            if (_authorizationDataStorage.AccoutId != null)
+                return CommandResult.OK;
+
+            return CommandResult.Fail(1, "Файл доступен только авторизованным пользователям");
         }
 
         public async Task<FileStreamContainer> GetFileAsync(Guid id, bool? fullSize = false)
@@ -428,6 +485,7 @@ namespace EList.Filestorage.Core.Impl
                 Description = fileInfo.Context,
                 Url = $"{serviceUrl}/{DOWNLOAD_METHOD}{fileInfo.Id}",
                 AccountId = fileInfo.AccountId,
+                Visibility = (FileVisibility)fileInfo.Visibility,
                 MimeType = mimeType,
                 Metadata = new List<Metadata>
                     {

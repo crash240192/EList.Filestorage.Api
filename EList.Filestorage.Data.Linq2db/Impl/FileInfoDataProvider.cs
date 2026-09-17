@@ -93,6 +93,7 @@ namespace EList.Filestorage.Data.Linq2db.Impl
                 existingItem.UploadedAt = item.UploadedAt;
                 existingItem.Context = item.Context;
                 existingItem.AccountId = item.AccountId;
+                existingItem.Visibility = item.Visibility;
                 existingItem.Processing = item.Processing;
                 existingItem.IsAvailable = item.IsAvailable;
                 await db.UpdateAsync(existingItem);
@@ -112,6 +113,20 @@ namespace EList.Filestorage.Data.Linq2db.Impl
 
                 existingItem.PreviewId = previewId;
                 await db.UpdateAsync(existingItem);
+            }
+        }
+
+        public async Task UpdateVisibilityAsync(IReadOnlyList<Guid> fileIds, short visibility)
+        {
+            if (fileIds == null || fileIds.Count == 0)
+                return;
+
+            using (var db = GetDataConnection())
+            {
+                await db.FileInfo
+                    .Where(i => fileIds.Contains(i.Id))
+                    .Set(i => i.Visibility, visibility)
+                    .UpdateAsync();
             }
         }
 

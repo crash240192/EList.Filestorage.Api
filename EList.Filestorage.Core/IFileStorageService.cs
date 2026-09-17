@@ -9,7 +9,12 @@ namespace EList.Filestorage.Core
         Task<CommandResult<UploadFileResult>> SaveFileAsync(IFormFile file);
         Task<CommandResult<UploadFileResult>> SaveFileAsync(string fileName, Stream file,long? contentLength = null);
         Task<CommandResult> AttachFileContextAsync(Guid fileId, FileContext fileContext);
+        Task<CommandResult> SetFilesVisibilityAsync(SetFilesVisibilityRequest request);
         Task<FileStreamContainer> GetFileAsync(Guid id, bool? fullSize = false);
+        /// <summary>
+        /// True if current request may download the file (Public, or Private with auth/service).
+        /// </summary>
+        Task<CommandResult> AssertCanDownloadAsync(Guid id);
         Task<CommandResult<Model.Files.FileInfo>> GetFileInfoAsync(Guid id);
         Task<CommandResult> DeleteFileAsync(Guid id);
     }

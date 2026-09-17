@@ -30,6 +30,10 @@ namespace EList.Filestorage.Data.Linq2db.Dto
         [Column("account_id")]
         public Guid? AccountId { get; set; }
 
+        /// <summary>0 = Public, 1 = Private. Existing rows default Public.</summary>
+        [Column("visibility")]
+        public short Visibility { get; set; }
+
         [Column("storage_type", DataType = DataType.Enum)]
         public StorageTypes StorageType { get; set; }
 
