@@ -42,7 +42,9 @@ namespace EList.Filestorage.Core.Impl
         private const string DOWNLOAD_METHOD = "download/";
 
         private readonly string serviceUrl;
-        private long? maxFileSize;
+        private readonly long? maxImageFileSizeMb;
+        private readonly long? maxVideoFileSizeMb;
+        private readonly long? maxFileSizeMbFallback;
         private readonly bool useDbStorage;
         private readonly int videoTimeframeSeconds;
         private readonly Size previewThreshold;
@@ -62,7 +64,10 @@ namespace EList.Filestorage.Core.Impl
             //_fileTypeValidator = fileTypeValidator;
             
             serviceUrl = ConfigurationManager.AppSettings["localServiceUrl"];
-            maxFileSize = ConfigurationManager.AppSettings.Contains("maxFileSize") ? int.Parse(ConfigurationManager.AppSettings["maxFileSize"]) : null;
+            maxImageFileSizeMb = ReadOptionalLongMb("maxImageFileSize");
+            maxVideoFileSizeMb = ReadOptionalLongMb("maxVideoFileSize");
+            // Legacy single cap — used when type-specific keys are absent.
+            maxFileSizeMbFallback = ReadOptionalLongMb("maxFileSize");
             useDbStorage = ConfigurationManager.AppSettings.Contains("useDbStorage")
                ? bool.Parse(ConfigurationManager.AppSettings["useDbStorage"])
                : false;
@@ -87,6 +92,13 @@ namespace EList.Filestorage.Core.Impl
             : 600;
             downscaleThreshold = new Size(widthThreshold, heightThreshold);
 
+        }
+
+        private static long? ReadOptionalLongMb(string key)
+        {
+            if (!ConfigurationManager.AppSettings.Contains(key))
+                return null;
+            return long.Parse(ConfigurationManager.AppSettings[key]);
         }
 
         public async Task<CommandResult<UploadFileResult>> SaveFileAsync(IFormFile file)
@@ -114,12 +126,6 @@ namespace EList.Filestorage.Core.Impl
             if ((contentLength ?? fileStream.Length) == 0)
                 return CommandResult<UploadFileResult>.Fail(1, $"Файл пуст.");
 
-            if (maxFileSize != null)
-            {
-                if ((contentLength ?? fileStream.Length) > maxFileSize * 1024 * 1024)
-                    return CommandResult<UploadFileResult>.Fail(1, $"Превышено ограничение ({maxFileSize} Мб) на размер загружаемого файла");
-            }
-
             //TODO: Добавить проверку на соответствие передаваемого типа и mime
             var mimeType = await MimeTypeUtility.GetMimeTypeFromFileAsync(fileStream);
             fileStream.Position = 0;
@@ -128,6 +134,10 @@ namespace EList.Filestorage.Core.Impl
 
             if (!isVideo && !isImage)
                 return CommandResult<UploadFileResult>.Fail(1, $"Допускается загрузка только фотографий и видео");
+
+            var sizeLimitError = AssertFileSizeWithinLimit(contentLength ?? fileStream.Length, isImage, isVideo);
+            if (sizeLimitError != null)
+                return sizeLimitError;
 
             #region fileChecker
             //if (!(await FileTypeChecker.FileTypeValidator.IsTypeRecognizableAsync(file)))
@@ -539,6 +549,32 @@ namespace EList.Filestorage.Core.Impl
 
             logger.Debug(correlationId, null, methodName, "Method finished", null, execTime.Elapsed);
             return new CommandResult<FileInfo>(result);
+        }
+
+        private CommandResult<UploadFileResult>? AssertFileSizeWithinLimit(long sizeBytes, bool isImage, bool isVideo)
+        {
+            long? limitMb = null;
+            string kind = "файла";
+
+            if (isImage)
+            {
+                limitMb = maxImageFileSizeMb ?? maxFileSizeMbFallback;
+                kind = "изображения";
+            }
+            else if (isVideo)
+            {
+                limitMb = maxVideoFileSizeMb ?? maxFileSizeMbFallback;
+                kind = "видео";
+            }
+
+            if (limitMb == null)
+                return null;
+
+            if (sizeBytes > limitMb.Value * 1024L * 1024L)
+                return CommandResult<UploadFileResult>.Fail(1,
+                    $"Превышено ограничение ({limitMb} Мб) на размер загружаемого {kind}");
+
+            return null;
         }
 
         public async Task<CommandResult> DeleteFileAsync(Guid id)

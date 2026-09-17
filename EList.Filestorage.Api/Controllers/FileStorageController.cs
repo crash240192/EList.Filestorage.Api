@@ -25,8 +25,11 @@ namespace EList.Filestorage.Api.Controllers
         private const string LOGGER_NAME = "EList.Filestorage.Api.Controllers.FileStorageController.";
         #endregion
 
-        /// <summary>100 MB — aligns with maxFileSize in appsettings.</summary>
-        private const long MaxUploadBytes = 100L * 1024 * 1024;
+        /// <summary>
+        /// HTTP ceiling; type-specific caps are applied in FileStorageService after MIME detect.
+        /// Keep &gt;= maxVideoFileSize in appsettings (FormOptions also reads config).
+        /// </summary>
+        private const long MaxUploadBytes = 505L * 1024 * 1024;
 
         private readonly IFileStorageService _fileStorageService;
         private readonly ICorrelationIdProvider _correlationIdProvider;

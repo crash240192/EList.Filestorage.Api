@@ -61,10 +61,23 @@ builder.Services.Configure<ApiBehaviorOptions>(options =>
 
 //builder.Services.AddHostedService(BackgroundUploaderService);
 
-// Align with maxFileSize (100 MB) + small buffer for multipart overhead
+// HTTP/multipart ceiling = max(image, video) from appsettings (+ buffer).
+// Type-specific limits are enforced in FileStorageService after MIME detection.
+static long ReadMb(Microsoft.Extensions.Configuration.IConfiguration config, string key, long? fallback = null)
+{
+    var raw = config[key];
+    if (!string.IsNullOrWhiteSpace(raw) && long.TryParse(raw, out var mb))
+        return mb;
+    return fallback ?? 0;
+}
+
+var fallbackMb = ReadMb(builder.Configuration, "maxFileSize", 500);
+var maxImageMb = ReadMb(builder.Configuration, "maxImageFileSize", fallbackMb > 0 ? fallbackMb : 50);
+var maxVideoMb = ReadMb(builder.Configuration, "maxVideoFileSize", fallbackMb > 0 ? fallbackMb : 500);
+var uploadCeilingMb = Math.Max(maxImageMb, maxVideoMb);
 builder.Services.Configure<FormOptions>(o =>
 {
-    o.MultipartBodyLengthLimit = 105L * 1024 * 1024;
+    o.MultipartBodyLengthLimit = (uploadCeilingMb + 5) * 1024L * 1024L;
 });
 
 //var mappingConfig = new MapperConfiguration(mc => { mc.AddProfile(new AutoMapperProfile()); });
