@@ -4,6 +4,7 @@ using EList.Common.Models;
 using Newtonsoft.Json;
 using NLog;
 using System.Net;
+using System.Text;
 using Task = System.Threading.Tasks.Task;
 
 namespace EList.Filestorage.Api.Middleware
@@ -17,23 +18,18 @@ namespace EList.Filestorage.Api.Middleware
 
         private readonly RequestDelegate next;
         private readonly ICorrelationIdProvider correlationIdProvider;
+        private readonly IHostEnvironment _environment;
 
-        /// <summary>
-        /// 
-        /// </summary>
-        /// <param name="next"></param>
-        /// <param name="correlationIdProvider"></param>
-        public ErrorHandlingMiddleware(RequestDelegate next, ICorrelationIdProvider correlationIdProvider)
+        public ErrorHandlingMiddleware(
+            RequestDelegate next,
+            ICorrelationIdProvider correlationIdProvider,
+            IHostEnvironment environment)
         {
             this.next = next;
             this.correlationIdProvider = correlationIdProvider;
+            _environment = environment;
         }
 
-        /// <summary>
-        /// 
-        /// </summary>
-        /// <param name="context"></param>
-        /// <returns></returns>
         public async Task InvokeAsync(HttpContext context)
         {
             #region logger
@@ -56,26 +52,49 @@ namespace EList.Filestorage.Api.Middleware
             }
         }
 
-        private static Task HandleExceptionAsync(HttpContext context, Exception exception)
+        private Task HandleExceptionAsync(HttpContext context, Exception exception)
         {
             var code = (int)HttpStatusCode.InternalServerError;
-            var contentType = context.Request.ContentType ?? "application/json";
-            context.Response.ContentType = contentType;
+            context.Response.ContentType = "application/json";
             context.Response.StatusCode = code;
 
-            string body = JsonConvert.SerializeObject(
-                CommandResult<object>.Fail(1, GetLowerLevelExceptionMessage(exception), exception.StackTrace)
-            );
+            var isDevelopment = _environment.IsDevelopment();
+            object bodyPayload = isDevelopment
+                ? new
+                {
+                    errorCode = 1,
+                    success = false,
+                    message = FormatExceptionChain(exception),
+                    stackTrace = exception.ToString()
+                }
+                : new
+                {
+                    errorCode = 1,
+                    success = false,
+                    message = "Внутренняя ошибка сервера. Обратитесь в поддержку и укажите correlation id.",
+                    correlationId = correlationIdProvider.Get()
+                };
 
-            return context.Response.WriteAsync(body);
+            return context.Response.WriteAsync(JsonConvert.SerializeObject(bodyPayload));
         }
 
-        private static string GetLowerLevelExceptionMessage(Exception ex)
+        private static string FormatExceptionChain(Exception exception)
         {
-            if (ex?.InnerException != null)
-                return GetLowerLevelExceptionMessage(ex.InnerException);
+            var sb = new StringBuilder();
+            var current = exception;
+            var level = 0;
+            while (current != null)
+            {
+                if (level == 0)
+                    sb.AppendLine($"{current.GetType().Name}: {current.Message}");
+                else
+                    sb.AppendLine($"  caused by [{level}] {current.GetType().Name}: {current.Message}");
 
-            return ex?.Message;
+                current = current.InnerException;
+                level++;
+            }
+
+            return sb.ToString().TrimEnd();
         }
     }
 }

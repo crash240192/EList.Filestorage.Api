@@ -96,6 +96,8 @@ namespace EList.Filestorage.Data.Linq2db.Impl
                 existingItem.Visibility = item.Visibility;
                 existingItem.Processing = item.Processing;
                 existingItem.IsAvailable = item.IsAvailable;
+                // Preserve PreviewId — previously dropped on every UpdateAsync (video thumbs lost).
+                existingItem.PreviewId = item.PreviewId;
                 await db.UpdateAsync(existingItem);
 
                 return existingItem;

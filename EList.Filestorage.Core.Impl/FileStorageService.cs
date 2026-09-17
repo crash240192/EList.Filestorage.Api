@@ -562,15 +562,33 @@ namespace EList.Filestorage.Core.Impl
                 }
             }
 
-            var fileExists = await _fileRepository.CheckFileExistsAsync(id);
+            var previewId = fileInfo.PreviewId;
 
-            if (fileExists)
-                await _fileRepository.DeleteAsync(id);
-
+            await DeleteStoredFileAsync(id);
             await _storageDataProvider.DeleteAsync(id);
+
+            if (previewId != null && previewId != Guid.Empty && previewId != id)
+            {
+                try
+                {
+                    await DeleteStoredFileAsync(previewId.Value);
+                    await _storageDataProvider.DeleteAsync(previewId.Value);
+                }
+                catch (Exception ex)
+                {
+                    logger.Warn(correlationId, null, methodName,
+                        $"Не удалось удалить preview '{previewId}' для файла '{id}': {ex.Message}");
+                }
+            }
 
             logger.Debug(correlationId, null, methodName, "Method finished", null, execTime.Elapsed);
             return CommandResult.OK;
+        }
+
+        private async Task DeleteStoredFileAsync(Guid id)
+        {
+            if (await _fileRepository.CheckFileExistsAsync(id))
+                await _fileRepository.DeleteAsync(id);
         }
     }
 }
