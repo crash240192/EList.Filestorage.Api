@@ -8,7 +8,6 @@ using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Primitives;
 using NLog;
 using System.Net;
-using System.Net.Http.Headers;
 using System.Security.Claims;
 using System.Text.Encodings.Web;
 using ConfigurationManager = EList.Common.Configuration.ConfigurationManager;
@@ -71,14 +70,15 @@ namespace EList.Filestorage.Api.Infrastructure
 
             try
             {
-                if ((Request.Path == "/api/tokenRegistration/register" || Request.Path == "/api/tokenRegistration/disable") && Request.Method == "POST")
-                {
-                    return CheckEListMainHader();
-                }
-                else
-                {
-                    return await CheckUserAuthenticationDataAsync();
-                }
+                // Service-token (elist.api): tokenRegistration + internal delete/info
+                var serviceAuth = TryAuthenticateServiceToken();
+                if (serviceAuth != null)
+                    return serviceAuth;
+
+                if (IsTokenRegistrationPath())
+                    return AuthenticateResult.Fail("Missing or invalid Authorization Header");
+
+                return await CheckUserAuthenticationDataAsync();
             }
             catch (Exception exception)
             {
@@ -89,18 +89,84 @@ namespace EList.Filestorage.Api.Infrastructure
             }
         }
 
+        private bool IsTokenRegistrationPath()
+        {
+            return (Request.Path == "/api/tokenRegistration/register"
+                    || Request.Path == "/api/tokenRegistration/disable")
+                   && Request.Method == "POST";
+        }
+
+        /// <summary>
+        /// Accept bare GUID or "Bearer {guid}" as the shared service token.
+        /// Returns null when the request is not a service-token call.
+        /// </summary>
+        private AuthenticateResult? TryAuthenticateServiceToken()
+        {
+            var correlationId = _correlationIdProvider.Get();
+            var METHOD_NAME = LOGGER_NAME + nameof(TryAuthenticateServiceToken);
+
+            // No service token configured: keep legacy open access for tokenRegistration only
+            if (token == null)
+            {
+                if (IsTokenRegistrationPath())
+                {
+                    var claims = Array.Empty<Claim>();
+                    var identity = new ClaimsIdentity(claims, Scheme.Name);
+                    var principal = new ClaimsPrincipal(identity);
+                    return AuthenticateResult.Success(new AuthenticationTicket(principal, Scheme.Name));
+                }
+                return null;
+            }
+
+            if (!Request.Headers.ContainsKey("Authorization"))
+                return null;
+
+            if (!TryParseAuthorizationGuid(Request.Headers["Authorization"], out var headerToken))
+                return null;
+
+            if (headerToken != token.Value)
+                return null;
+
+            _authorizationDataStorage.SetServiceRequest();
+
+            var serviceClaims = new[] { new Claim(ClaimTypes.PrimarySid, headerToken.ToString()) };
+            var serviceIdentity = new ClaimsIdentity(serviceClaims, Scheme.Name);
+            var servicePrincipal = new ClaimsPrincipal(serviceIdentity);
+
+            logger.Debug(correlationId, null, METHOD_NAME, "Service token authenticated", null, null);
+            return AuthenticateResult.Success(new AuthenticationTicket(servicePrincipal, Scheme.Name));
+        }
+
+        private static bool TryParseAuthorizationGuid(StringValues header, out Guid guid)
+        {
+            guid = Guid.Empty;
+            var raw = header.ToString()?.Trim();
+            if (string.IsNullOrEmpty(raw))
+                return false;
+
+            if (Guid.TryParse(raw, out guid))
+                return true;
+
+            // "Bearer {guid}" / "Basic {guid}"
+            var parts = raw.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length == 2 && Guid.TryParse(parts[1], out guid))
+                return true;
+
+            return false;
+        }
+
         private async Task<AuthenticateResult> CheckUserAuthenticationDataAsync()
         {
-            //logger.Debug("Start BasicAuthenticationHandler 'HandleAuthenticateAsync' method - Get Authorization header");
             var tokenHeader = Request.Headers.ContainsKey("Authorization") ? Request.Headers["Authorization"] : StringValues.Empty;
             var jwtHeader = Request.Headers.ContainsKey("Authorization-jwt") ? Request.Headers["Authorization-jwt"] : StringValues.Empty;
 
             if (jwtHeader == StringValues.Empty)
                 return AuthenticateResult.Fail("Invalid Authorization-jwt Header");
 
-            var jwtHash = _encryptionTool.CalculateStringHash(jwtHeader);
+            // Must match elist.api: hash(hash(jwt)|platform|appVersion)
+            var clientHash = GetClientHash(jwtHeader.ToString());
 
-            var claims = new List<Claim> { new Claim(ClaimTypes.Hash, jwtHash) };
+            var claims = new List<Claim> { new Claim(ClaimTypes.Hash, clientHash) };
 
             if (tokenHeader != StringValues.Empty)
                 claims.Add(new Claim(ClaimTypes.PrimarySid, tokenHeader));
@@ -110,87 +176,37 @@ namespace EList.Filestorage.Api.Infrastructure
             var ticket = new AuthenticationTicket(principal, Scheme.Name);
 
             if (!Request.Headers.ContainsKey("Authorization"))
-            {
-                //logger.Error("Start BasicAuthenticationHandler 'HandleAuthenticateAsync' method - Missing Authorization Header");
                 return AuthenticateResult.Fail("Missing Authorization Header");
-            }
 
-            var tokenIsGuid = Guid.TryParse(tokenHeader, out var tokenValue);
-            if (!tokenIsGuid)
+            if (!TryParseAuthorizationGuid(tokenHeader, out var tokenValue))
                 return AuthenticateResult.Fail("Authorization header must be Guid");
-
-            //logger.Debug($"Start BasicAuthenticationHandler 'HandleAuthenticateAsync' method - Get Token by id: {tokenValue}");
 
             var authorizationItem = await _authorizationService.GetAsync(new Model.Authorization.AuthorizationDataRequest
             {
                 Token = tokenValue,
-                JwtHash = jwtHash,
+                JwtHash = clientHash,
             });
 
             if (!authorizationItem.Success || authorizationItem == null)
-            {
-                //logger.Error("Start BasicAuthenticationHandler 'HandleAuthenticateAsync' method - Invalid Authorization Header");
                 return AuthenticateResult.Fail("Invalid Authorization Header");
-            }
 
             if (!authorizationItem.Result.Active)
-            {
-                //logger.Error("Start BasicAuthenticationHandler 'HandleAuthenticateAsync' method - Token inactive");
                 return AuthenticateResult.Fail("Token inactive");
-            }
-            await _authorizationDataStorage.SetAuthorizationData(tokenValue, jwtHash);
-            //logger.Debug("Start BasicAuthenticationHandler 'HandleAuthenticateAsync' method - Success");
+
+            await _authorizationDataStorage.SetAuthorizationData(tokenValue, clientHash);
             return AuthenticateResult.Success(ticket);
         }
 
-        private AuthenticateResult CheckEListMainHader()
+        /// <summary>
+        /// Same algorithm as elist.api AuthenticationHandler.GetClientHash.
+        /// </summary>
+        private string GetClientHash(string jwtHeader)
         {
-            var correlationId = _correlationIdProvider.Get();
-            var METHOD_NAME = LOGGER_NAME + nameof(CheckEListMainHader);
+            var jwtHash = _encryptionTool.CalculateStringHash(jwtHeader);
+            var platform = Request.Headers["X-Client-Platform"].FirstOrDefault() ?? "unknown";
+            var appVersion = Request.Headers["X-App-Version"].FirstOrDefault() ?? "unknown";
 
-            if (token == null)
-            {
-                var claims = new Claim[0];
-                var identity = new ClaimsIdentity(claims, Scheme.Name);
-                var principal = new ClaimsPrincipal(identity);
-                var ticket = new AuthenticationTicket(principal, Scheme.Name);
-                return AuthenticateResult.Success(ticket);
-            }
-            else
-            {
-                if (!Request.Headers.ContainsKey("Authorization"))
-                {
-                    #region logger
-                    logger.Error(correlationId, null, METHOD_NAME, $"{nameof(HandleAuthenticateAsync)} method missing Authorization Header", null, null);
-                    #endregion
-                    return AuthenticateResult.Fail("Missing Authorization Header");
-                }
-
-                var header = Request.Headers["Authorization"];
-                var authHeader = AuthenticationHeaderValue.Parse(header);
-                var headerToken = Guid.Parse(authHeader.Parameter);
-                #region logger
-                logger.Debug(correlationId, null, METHOD_NAME, $"{nameof(HandleAuthenticateAsync)} method get token from header", null, null, new Dictionary<string, object> { { "id", headerToken } });
-                #endregion
-
-                if (headerToken != token)
-                {
-                    #region logger
-                    logger.Error(correlationId, null, METHOD_NAME, "Invalid Authorization Header", null, null, null, new Dictionary<string, object> { { "token", token } });
-                    #endregion
-                    return AuthenticateResult.Fail("Invalid Authorization Header");
-                }
-
-                var claims = new[] { new Claim(ClaimTypes.PrimarySid, authHeader.Parameter) };
-                var identity = new ClaimsIdentity(claims, Scheme.Name);
-                var principal = new ClaimsPrincipal(identity);
-                var ticket = new AuthenticationTicket(principal, Scheme.Name);
-
-                #region logger
-                logger.Debug(correlationId, null, METHOD_NAME, $"{nameof(HandleAuthenticateAsync)} method has finished", null, null);
-                #endregion
-                return AuthenticateResult.Success(ticket);
-            }
+            return _encryptionTool.CalculateStringHash($"{jwtHash}|{platform}|{appVersion}");
         }
 
         /// <summary>

@@ -61,9 +61,10 @@ builder.Services.Configure<ApiBehaviorOptions>(options =>
 
 //builder.Services.AddHostedService(BackgroundUploaderService);
 
+// Align with maxFileSize (100 MB) + small buffer for multipart overhead
 builder.Services.Configure<FormOptions>(o =>
 {
-    o.MultipartBodyLengthLimit = 42949672960;
+    o.MultipartBodyLengthLimit = 105L * 1024 * 1024;
 });
 
 //var mappingConfig = new MapperConfiguration(mc => { mc.AddProfile(new AutoMapperProfile()); });

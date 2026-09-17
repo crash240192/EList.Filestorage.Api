@@ -28,12 +28,14 @@ namespace EList.Filestorage.DI
 
             // External clients
             //mapping.AddSingleton<IXDSStreamClient, XDSStreamClient>();
-            mapping.AddSingleton<IAuthorizationDataStorage, AuthorizationDataStorage>();
+            // Per-request auth context (must not be Singleton — holds Token/JwtHash/AccountId)
+            mapping.AddScoped<IAuthorizationDataStorage, AuthorizationDataStorage>();
 
             // Services
             mapping.AddSingleton<IBackgroundWorkerService, BackgroundWorkerService>();
             mapping.AddSingleton<IAuthorizationService, AuthorizationService>();
-            mapping.AddSingleton<IFileStorageService, FileStorageService>();
+            // Scoped: depends on IAuthorizationDataStorage (request-scoped)
+            mapping.AddScoped<IFileStorageService, FileStorageService>();
             mapping.AddSingleton<ILocalFileStorage, LocalFileStorage>();
 
             // Repositories

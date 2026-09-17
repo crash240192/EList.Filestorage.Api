@@ -493,6 +493,17 @@ namespace EList.Filestorage.Core.Impl
             if (fileInfo == null)
                 return CommandResult.Fail(1, $"Не найдена информация о файле с id='{id}'");
 
+            // User delete: only owner. Service-token (elist.api internal) may delete any file.
+            if (!_authorizationDataStorage.IsServiceRequest)
+            {
+                if (_authorizationDataStorage.AccoutId == null
+                    || fileInfo.AccountId == null
+                    || fileInfo.AccountId != _authorizationDataStorage.AccoutId)
+                {
+                    return CommandResult.Fail(1, "Нет прав на удаление файла");
+                }
+            }
+
             var fileExists = await _fileRepository.CheckFileExistsAsync(id);
 
             if (fileExists)

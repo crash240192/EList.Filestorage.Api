@@ -15,7 +15,7 @@ namespace EList.Filestorage.Api.Controllers
     /// 
     /// </summary>
     [ApiController]
-    //[Authorize]
+    [Authorize]
     [Route("api")]
     public class FileStorageController : ControllerBase
     {
@@ -24,6 +24,9 @@ namespace EList.Filestorage.Api.Controllers
         private static readonly ILoggerWrapper logger = new NLogLoggerWrapper(log);
         private const string LOGGER_NAME = "EList.Filestorage.Api.Controllers.FileStorageController.";
         #endregion
+
+        /// <summary>100 MB — aligns with maxFileSize in appsettings.</summary>
+        private const long MaxUploadBytes = 100L * 1024 * 1024;
 
         private readonly IFileStorageService _fileStorageService;
         private readonly ICorrelationIdProvider _correlationIdProvider;
@@ -46,7 +49,7 @@ namespace EList.Filestorage.Api.Controllers
         /// <param name="formFile"></param>
         /// <returns></returns>
         [HttpPost("upload")]
-        [RequestSizeLimit(42949672960)]
+        [RequestSizeLimit(MaxUploadBytes)]
         public async Task<CommandResult<UploadFileResult>> UploadFileAsync(IFormFile formFile)
         {
             var correlationId = _correlationIdProvider.Get();
@@ -72,7 +75,7 @@ namespace EList.Filestorage.Api.Controllers
         /// <param name="fileName"></param>
         /// <returns></returns>
         [HttpPost("upload/{fileName}")]
-        [RequestSizeLimit(42949672960)]
+        [RequestSizeLimit(MaxUploadBytes)]
         public async Task<CommandResult<UploadFileResult>> UploadFileAsync(string fileName)
         {
             var correlationId = _correlationIdProvider.Get();
@@ -120,12 +123,14 @@ namespace EList.Filestorage.Api.Controllers
         }
 
         /// <summary>
-        /// Скачать файл из хранилища
+        /// Скачать файл из хранилища.
+        /// Guest-friendly for now (Public). Private/visibility enforcement is a later stage.
         /// </summary>
         /// <param name="fileId"></param>
         /// <param name="fullSize"></param>
         /// <returns></returns>
         [HttpGet("download/{fileId}")]
+        [AllowAnonymous]
         public async Task<IActionResult> DownloadFileAsync(Guid fileId, [FromHeader(Name = "FullSize")] bool? fullSize)
         {
             var correlationId = _correlationIdProvider.Get();
