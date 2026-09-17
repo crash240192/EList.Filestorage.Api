@@ -110,6 +110,7 @@ namespace EList.Filestorage.Api.Infrastructure
             {
                 if (IsTokenRegistrationPath())
                 {
+                    _authorizationDataStorage.SetServiceRequest();
                     var claims = Array.Empty<Claim>();
                     var identity = new ClaimsIdentity(claims, Scheme.Name);
                     var principal = new ClaimsPrincipal(identity);

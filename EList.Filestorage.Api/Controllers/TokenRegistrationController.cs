@@ -1,6 +1,7 @@
 ﻿using EList.Common.CorrelationId;
 using EList.Common.Logger;
 using EList.Common.Models;
+using EList.Filestorage.Api.Filters;
 using EList.Filestorage.Model.Authorization;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -11,9 +12,10 @@ using IAuthorizationService = EList.Filestorage.Core.IAuthorizationService;
 namespace EList.Filestorage.Api.Controllers
 {
     /// <summary>
-    /// Регистрация авторизационных данных eList
+    /// Регистрация авторизационных данных eList (internal: elist.api service-token).
     /// </summary>
     [Authorize]
+    [ServiceTokenRequired]
     [Route("api/[controller]")]
     [ApiController]
     public class TokenRegistrationController : ControllerBase

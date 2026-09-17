@@ -132,6 +132,10 @@ namespace EList.Filestorage.Core.Impl
             var isImage = MimeTypeUtility.IsImage(mimeType);
             var isVideo = !isImage ? MimeTypeUtility.IsVideo(mimeType) : false;
 
+            if (!MimeTypeUtility.IsAllowedUploadMime(mimeType))
+                return CommandResult<UploadFileResult>.Fail(1,
+                    $"Тип файла '{mimeType}' не поддерживается. Допускаются: JPEG, PNG, GIF, WebP, HEIC, MP4, MOV, WebM");
+
             if (!isVideo && !isImage)
                 return CommandResult<UploadFileResult>.Fail(1, $"Допускается загрузка только фотографий и видео");
 
@@ -374,6 +378,20 @@ namespace EList.Filestorage.Core.Impl
             if (fileInfo == null)
                 return CommandResult.Fail(1, $"Не удалось найти информацию о файле с 'id={fileId}'");
 
+            // ACL: service-token any file; user only own. Blocked: only service may touch metadata.
+            if (!_authorizationDataStorage.IsServiceRequest)
+            {
+                if (_authorizationDataStorage.AccoutId == null
+                    || fileInfo.AccountId == null
+                    || fileInfo.AccountId != _authorizationDataStorage.AccoutId)
+                {
+                    return CommandResult.Fail(1, "Нет прав на изменение контекста файла");
+                }
+
+                if ((FileAccessStatus)fileInfo.AccessStatus == FileAccessStatus.Blocked)
+                    return CommandResult.Fail(1, "Файл заблокирован модерацией");
+            }
+
             fileInfo.Context = contextText;
             if (fileContext.Visibility != null)
                 fileInfo.Visibility = (short)fileContext.Visibility.Value;
@@ -397,16 +415,9 @@ namespace EList.Filestorage.Core.Impl
             if (ids.Count == 0)
                 return CommandResult.Fail(1, "Список fileIds не должен быть пустым");
 
-            // Service-token: any files. User token: only own files.
+            // Internal only (elist.api service-token). Users set Visibility via attachContext on own files.
             if (!_authorizationDataStorage.IsServiceRequest)
-            {
-                if (_authorizationDataStorage.AccoutId == null)
-                    return CommandResult.Fail(1, "Нет прав на изменение visibility");
-
-                var existing = await _storageDataProvider.GetListAsync(ids);
-                if (existing.Any(f => f.AccountId != _authorizationDataStorage.AccoutId))
-                    return CommandResult.Fail(1, "Нет прав на изменение visibility чужих файлов");
-            }
+                return CommandResult.Fail(1, "Нет прав на изменение visibility");
 
             await _storageDataProvider.UpdateVisibilityAsync(ids, (short)request.Visibility);
 

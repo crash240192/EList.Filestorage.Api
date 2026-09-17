@@ -12,7 +12,8 @@ using ILogger = NLog.ILogger;
 namespace EList.Filestorage.Api.Controllers
 {
     /// <summary>
-    /// 
+    /// User-facing file API (browser / UI with user token).
+    /// Internal batch ops live under <c>/api/internal/*</c> (service-token).
     /// </summary>
     [ApiController]
     [Authorize]
@@ -100,11 +101,9 @@ namespace EList.Filestorage.Api.Controllers
         }
 
         /// <summary>
-        /// Отправить файл в хранилище (с доп. информацией)
+        /// Привязать JSON-контекст к файлу (и опционально Visibility).
+        /// Только владелец или service-token; Blocked — только service-token.
         /// </summary>
-        /// <param name="fileId"></param>
-        /// <param name="fileContext"></param>
-        /// <returns></returns>
         [HttpPost("attachContext")]
         public async Task<CommandResult> AttachFileContextAsync([FromQuery] Guid fileId, FileContext fileContext)
         {
@@ -151,53 +150,6 @@ namespace EList.Filestorage.Api.Controllers
             {
                 logger.Error(correlationId, null, methodName, $"Method failed: {ex.Message}", execTime.Elapsed, ex);
                 throw;
-            }
-        }
-
-        /// <summary>
-        /// Batch-обновление visibility (Public/Private). Service-token или владелец файлов.
-        /// </summary>
-        [HttpPost("setVisibility")]
-        public async Task<CommandResult> SetFilesVisibilityAsync([FromBody] SetFilesVisibilityRequest request)
-        {
-            var correlationId = _correlationIdProvider.Get();
-            var execTime = Stopwatch.StartNew();
-            var methodName = $"{LOGGER_NAME}{nameof(SetFilesVisibilityAsync)}";
-            logger.Debug(correlationId, null, methodName, null, "Method started");
-            try
-            {
-                var result = await _fileStorageService.SetFilesVisibilityAsync(request);
-                logger.Debug(correlationId, null, methodName, "Method finished", null, execTime.Elapsed);
-                return result;
-            }
-            catch (Exception ex)
-            {
-                logger.Error(correlationId, null, methodName, $"Method failed: {ex.Message}", execTime.Elapsed, ex);
-                return CommandResult.Fail(1, ex.Message);
-            }
-        }
-
-        /// <summary>
-        /// Batch-обновление accessStatus (Active/Blocked). Только service-token (модерация).
-        /// Blocked не удаляет blob — download только через service-token.
-        /// </summary>
-        [HttpPost("setAccessStatus")]
-        public async Task<CommandResult> SetFilesAccessStatusAsync([FromBody] SetFilesAccessStatusRequest request)
-        {
-            var correlationId = _correlationIdProvider.Get();
-            var execTime = Stopwatch.StartNew();
-            var methodName = $"{LOGGER_NAME}{nameof(SetFilesAccessStatusAsync)}";
-            logger.Debug(correlationId, null, methodName, null, "Method started");
-            try
-            {
-                var result = await _fileStorageService.SetFilesAccessStatusAsync(request);
-                logger.Debug(correlationId, null, methodName, "Method finished", null, execTime.Elapsed);
-                return result;
-            }
-            catch (Exception ex)
-            {
-                logger.Error(correlationId, null, methodName, $"Method failed: {ex.Message}", execTime.Elapsed, ex);
-                return CommandResult.Fail(1, ex.Message);
             }
         }
 
