@@ -664,6 +664,22 @@ namespace EList.Filestorage.Core.Impl
             return CommandResult.OK;
         }
 
+        public async Task<CommandResult<List<Guid>>> GetGcCandidateIdsAsync(int olderThanDays, int take)
+        {
+            if (!_authorizationDataStorage.IsServiceRequest)
+                return CommandResult<List<Guid>>.Fail(1, "Нет прав");
+
+            if (olderThanDays < 1)
+                olderThanDays = 7;
+            if (take < 1 || take > 500)
+                take = 100;
+
+            var olderThan = DateTimeOffset.UtcNow.AddDays(-olderThanDays);
+            var rows = await _storageDataProvider.GetGcCandidatesAsync(olderThan, take, null);
+            var ids = rows.Select(r => r.Id).ToList();
+            return new CommandResult<List<Guid>>(ids);
+        }
+
         private async Task DeleteStoredFileAsync(Guid id)
         {
             if (await _fileRepository.CheckFileExistsAsync(id))

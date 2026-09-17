@@ -32,10 +32,8 @@ namespace EList.Filestorage.Data.Linq2db.Impl
         {
             using (var db = GetDataConnection())
             {
-                var query = db.FileInfo.AsQueryable();
-
-                // N3 legacy
-                //    .Where(i => i.IsAvailable && !i.Processing && i.StorageType != StorageTypes.Xds);
+                var query = db.FileInfo.AsQueryable()
+                    .Where(i => i.IsAvailable && !i.Processing);
 
                 if (take > 0)
                     query = query.Take(take.Value);
@@ -47,13 +45,36 @@ namespace EList.Filestorage.Data.Linq2db.Impl
             }
         }
 
-        //public async Task<FileInfoDto?> GetByXdsIdAsync(Guid xdsId)
-        //{
-        //    using (var db = GetDataConnection())
-        //    {
-        //        return await db.FileInfo.FirstOrDefaultAsync(x => x.XdsId == xdsId);
-        //    }
-        //}
+        /// <summary>
+        /// Candidates for orphan GC: oldest Active files older than cutoff.
+        /// Excludes rows that are still a PreviewId of another file. Blocked kept for evidence.
+        /// </summary>
+        public async Task<List<FileInfoDto>> GetGcCandidatesAsync(DateTimeOffset olderThan, int take, Guid? afterId)
+        {
+            if (take <= 0)
+                take = 100;
+
+            using (var db = GetDataConnection())
+            {
+                var previewIds = db.FileInfo
+                    .Where(p => p.PreviewId != null)
+                    .Select(p => p.PreviewId!.Value);
+
+                // afterId reserved for future keyset paging; current GC deletes as it goes.
+                _ = afterId;
+
+                var query = db.FileInfo.AsQueryable()
+                    .Where(i => i.UploadedAt < olderThan)
+                    .Where(i => i.AccessStatus == 0)
+                    .Where(i => !previewIds.Contains(i.Id));
+
+                return await query
+                    .OrderBy(i => i.UploadedAt)
+                    .ThenBy(i => i.Id)
+                    .Take(take)
+                    .ToListAsync();
+            }
+        }
 
         public async Task<List<FileInfoDto>> GetListAsync(List<Guid> ids)
         {

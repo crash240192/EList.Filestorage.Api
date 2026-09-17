@@ -84,6 +84,29 @@ namespace EList.Filestorage.Core.Impl
             return File.Exists(GetFilePath(id));
         }
 
+        public IReadOnlyList<Guid> EnumerateStoredIds(int maxCount)
+        {
+            if (maxCount <= 0)
+                maxCount = 500;
+
+            if (!Directory.Exists(_storageDirectory))
+                return Array.Empty<Guid>();
+
+            var result = new List<Guid>(Math.Min(maxCount, 256));
+            foreach (var path in Directory.EnumerateFiles(_storageDirectory))
+            {
+                var name = Path.GetFileName(path);
+                if (Guid.TryParse(name, out var id))
+                {
+                    result.Add(id);
+                    if (result.Count >= maxCount)
+                        break;
+                }
+            }
+
+            return result;
+        }
+
         private string GetFilePath(Guid id)
         {
             var path = Path.Combine(_storageDirectory, id.ToString());

@@ -58,6 +58,18 @@ namespace EList.Filestorage.Api.Controllers
                 () => _fileStorageService.SetFilesAccessStatusAsync(request));
         }
 
+        /// <summary>
+        /// Oldest Active file ids older than N days (orphan reconciler input for elist.api).
+        /// </summary>
+        [HttpGet("gc/candidates")]
+        public async Task<CommandResult<List<Guid>>> GetGcCandidatesAsync(
+            [FromQuery] int olderThanDays = 7,
+            [FromQuery] int take = 100)
+        {
+            return await ExecuteAsync(nameof(GetGcCandidatesAsync),
+                () => _fileStorageService.GetGcCandidateIdsAsync(olderThanDays, take));
+        }
+
         private async Task<CommandResult> ExecuteAsync(string shortName, Func<Task<CommandResult>> action)
         {
             var correlationId = _correlationIdProvider.Get();
@@ -74,6 +86,25 @@ namespace EList.Filestorage.Api.Controllers
             {
                 logger.Error(correlationId, null, methodName, $"Method failed: {ex.Message}", execTime.Elapsed, ex);
                 return CommandResult.Fail(1, ex.Message);
+            }
+        }
+
+        private async Task<CommandResult<T>> ExecuteAsync<T>(string shortName, Func<Task<CommandResult<T>>> action)
+        {
+            var correlationId = _correlationIdProvider.Get();
+            var execTime = Stopwatch.StartNew();
+            var methodName = $"{LOGGER_NAME}{shortName}";
+            logger.Debug(correlationId, null, methodName, null, "Method started");
+            try
+            {
+                var result = await action();
+                logger.Debug(correlationId, null, methodName, "Method finished", null, execTime.Elapsed);
+                return result;
+            }
+            catch (Exception ex)
+            {
+                logger.Error(correlationId, null, methodName, $"Method failed: {ex.Message}", execTime.Elapsed, ex);
+                return CommandResult<T>.Fail(1, ex.Message);
             }
         }
     }

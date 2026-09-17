@@ -14,5 +14,6 @@ namespace EList.Filestorage.Data.Linq2db.Interfaces
         Task UpdateAccessStatusAsync(IReadOnlyList<Guid> fileIds, short accessStatus);
         Task DeleteAsync(Guid id);
         Task<List<FileInfoDto>> GetOldestAvailableLocalFileInfosAsync(int? take = 0);
+        Task<List<FileInfoDto>> GetGcCandidatesAsync(DateTimeOffset olderThan, int take, Guid? afterId);
     }
 }

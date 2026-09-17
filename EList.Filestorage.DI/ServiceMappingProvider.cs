@@ -16,7 +16,7 @@ namespace EList.Filestorage.DI
         {
             var mapping = new ServiceMapping();
 
-            // N3.Common mappings
+            // Common mappings
             mapping.AddSingleton<ICorrelationIdProvider, CorrelationIdProvider>();
             mapping.AddSingleton<IEncryptionTool, EncryptionTool>();
 
@@ -26,8 +26,6 @@ namespace EList.Filestorage.DI
             mapping.AddSingleton<IDBStorageDataProvider, DBStorageDataProvider>();
             mapping.AddSingleton<IAuthorizationDataProvider, AuthorizationDataProvider>();
 
-            // External clients
-            //mapping.AddSingleton<IXDSStreamClient, XDSStreamClient>();
             // Per-request auth context (must not be Singleton — holds Token/JwtHash/AccountId)
             mapping.AddScoped<IAuthorizationDataStorage, AuthorizationDataStorage>();
 
@@ -40,7 +38,7 @@ namespace EList.Filestorage.DI
 
             // Repositories
             mapping.AddSingleton<IFileRepository, FileRepository>();
-            
+            // useDbStorage / DBStorage kept for possible small non-media blobs later
             return mapping;
         }
     }

@@ -2,16 +2,18 @@
 using EList.Common.CorrelationId;
 using EList.Common.Logger;
 using EList.Common.Threading;
-using EList.Filestorage.Data.Linq2db.Dto;
 using EList.Filestorage.Data.Linq2db.Interfaces;
 using EList.Filestorage.Core;
 using FluentScheduler;
 using NLog;
-using System.Collections.Concurrent;
 using ILogger = NLog.ILogger;
 
 namespace EList.Filestorage.BackgroundWorker.Impl
 {
+    /// <summary>
+    /// Local hygiene: mark missing blobs unavailable; optionally delete disk files with no file_info.
+    /// Cross-DB orphan purge (no refs in elist.api) is driven by elist.api OrphanFileGcWorker.
+    /// </summary>
     public class BackgroundWorkerService : IBackgroundWorkerService
     {
         #region private readonly & constructor
@@ -24,38 +26,50 @@ namespace EList.Filestorage.BackgroundWorker.Impl
 
         private readonly int _maxThreads;
         private readonly int _processIntervalMinutes;
-        private static readonly object processSyncRoot = new object();
+        private readonly int _diskScanMax;
+        private readonly bool _deleteDiskOrphans;
         private bool _active;
         public bool Active { get { return _active; } }
 
         private readonly ICorrelationIdProvider _correlationIdProvider;
         private readonly IFileRepository _fileRepository;
         private readonly IFileInfoDataProvider _fileInfoDataProvider;
+        private readonly ILocalFileStorage _localFileStorage;
 
-        public BackgroundWorkerService(IFileInfoDataProvider storageDataProvider,
-            IFileRepository fileRepository)
+        public BackgroundWorkerService(
+            IFileInfoDataProvider storageDataProvider,
+            IFileRepository fileRepository,
+            ILocalFileStorage localFileStorage)
         {
             _correlationIdProvider = new RandomCorrelationIdProvider();
             _fileInfoDataProvider = storageDataProvider;
             _fileRepository = fileRepository;
+            _localFileStorage = localFileStorage;
 
             var methodName = $"{LOGGER_NAME}ctor";
             var correlationId = _correlationIdProvider.Get();
 
-            bool timerIsParsed = int.TryParse(ConfigurationManager.AppSettings["BackgroundWorker:processIntervalMinutes"], out _processIntervalMinutes);
-            if (!timerIsParsed)
+            if (!int.TryParse(ConfigurationManager.AppSettings["BackgroundWorker:processIntervalMinutes"], out _processIntervalMinutes)
+                || _processIntervalMinutes <= 0)
                 _processIntervalMinutes = 15;
             logger.Info(correlationId, null, methodName, null, $"processIntervalMinutes = {_processIntervalMinutes}", null);
 
-            var maxThreadsIsParsed = int.TryParse(ConfigurationManager.AppSettings["BackgroundWorker:maxThreads"], out _maxThreads);
-            if (!maxThreadsIsParsed)
+            if (!int.TryParse(ConfigurationManager.AppSettings["BackgroundWorker:maxThreads"], out _maxThreads)
+                || _maxThreads <= 0)
                 _maxThreads = 1;
             logger.Info(correlationId, null, methodName, null, $"maxThreads = {_maxThreads}", null);
 
+            if (!int.TryParse(ConfigurationManager.AppSettings["BackgroundWorker:diskScanMax"], out _diskScanMax)
+                || _diskScanMax <= 0)
+                _diskScanMax = 500;
+
+            _deleteDiskOrphans = ConfigurationManager.AppSettings.Contains("BackgroundWorker:deleteDiskOrphans")
+                && bool.Parse(ConfigurationManager.AppSettings["BackgroundWorker:deleteDiskOrphans"]);
+
             if (ConfigurationManager.AppSettings.Contains("BackgroundWorker:active"))
                 _active = bool.Parse(ConfigurationManager.AppSettings["BackgroundWorker:active"]);
-            else 
-                _active = true;
+            else
+                _active = false;
 
             JobManager.JobException += (obj) =>
             {
@@ -72,7 +86,7 @@ namespace EList.Filestorage.BackgroundWorker.Impl
             Start();
         }
 
-        public void ManualStop() 
+        public void ManualStop()
         {
             _active = false;
             Stop();
@@ -91,7 +105,7 @@ namespace EList.Filestorage.BackgroundWorker.Impl
                     return;
 
                 if (_isStarted)
-                    throw new InvalidOperationException("BackgroundUploader is already started");
+                    throw new InvalidOperationException("BackgroundWorker is already started");
 
                 _isStarted = true;
 
@@ -106,7 +120,7 @@ namespace EList.Filestorage.BackgroundWorker.Impl
             catch (Exception ex)
             {
                 logger.Error(correlationId, null, methodName,
-                    $"Failed to start BackgroundUploader: {ex.Message}", null, ex);
+                    $"Failed to start BackgroundWorker: {ex.Message}", null, ex);
             }
         }
 
@@ -127,7 +141,7 @@ namespace EList.Filestorage.BackgroundWorker.Impl
             catch (Exception ex)
             {
                 logger.Error(correlationId, null, methodName,
-                    $"Failed to stop BackgroundUploader: {ex.Message}", null, ex);
+                    $"Failed to stop BackgroundWorker: {ex.Message}", null, ex);
             }
         }
 
@@ -140,54 +154,80 @@ namespace EList.Filestorage.BackgroundWorker.Impl
             {
                 logger.Debug(correlationId, null, methodName, null, "Process method tick");
 
-                var availableFiles = AsyncHelper.RunSync(() => _fileInfoDataProvider.GetOldestAvailableLocalFileInfosAsync(_maxThreads));
-                var queue = new ConcurrentQueue<FileInfoDto>(availableFiles);
-
-                var action = new Action(() =>
-                {
-                    if (queue.IsEmpty)
-                        return;
-
-                    while (queue.TryDequeue(out FileInfoDto fileInfo))
-                    {
-                        try
-                        {
-
-                        }
-                        catch (Exception ex)
-                        {
-                            logger.Error(correlationId, null, methodName,
-                                    $"{nameof(Process)} method has failed: {ex.Message}", null, ex);
-                            throw;
-                        }
-                        finally
-                        {
-                            //_runningThreadsCount--;
-                            if (fileInfo != null)
-                            {
-                                fileInfo.Processing = false;
-                                AsyncHelper.RunSync(() => _fileInfoDataProvider.UpdateAsync(fileInfo));
-                            }
-                        }
-                    }
-                });
-
-                var threadTasks = new List<Task>();
-                for (var count = 0; count < _maxThreads; count++)
-                {
-                    var task = new Task(action);
-                    threadTasks.Add(task);
-                }
-
-                threadTasks.ForEach(t => t.Start());
-
-                Task.WaitAll(threadTasks.ToArray());
+                ReconcileMissingBlobs(correlationId, methodName);
+                if (_deleteDiskOrphans)
+                    ReconcileDiskOrphans(correlationId, methodName);
             }
             catch (Exception ex)
             {
                 logger.Error(correlationId, null, methodName,
-                    $"Failed to process BackgroundUploader tick: {ex.Message}", null, ex);
+                    $"Failed to process BackgroundWorker tick: {ex.Message}", null, ex);
             }
+        }
+
+        /// <summary>file_info says available but blob gone → mark IsAvailable=false.</summary>
+        private void ReconcileMissingBlobs(string correlationId, string methodName)
+        {
+            var batch = AsyncHelper.RunSync(() =>
+                _fileInfoDataProvider.GetOldestAvailableLocalFileInfosAsync(_maxThreads > 0 ? _maxThreads * 20 : 100));
+            if (batch == null || batch.Count == 0)
+                return;
+
+            var marked = 0;
+            foreach (var fileInfo in batch)
+            {
+                try
+                {
+                    var exists = AsyncHelper.RunSync(() => _fileRepository.CheckFileExistsAsync(fileInfo.Id));
+                    if (exists)
+                        continue;
+
+                    fileInfo.IsAvailable = false;
+                    fileInfo.Processing = false;
+                    AsyncHelper.RunSync(() => _fileInfoDataProvider.UpdateAsync(fileInfo));
+                    marked++;
+                }
+                catch (Exception ex)
+                {
+                    logger.Warn(correlationId, null, methodName,
+                        $"Missing-blob check failed for {fileInfo.Id}: {ex.Message}");
+                }
+            }
+
+            if (marked > 0)
+                logger.Info(correlationId, null, methodName, null, $"Marked unavailable (missing blob): {marked}", null);
+        }
+
+        /// <summary>Disk file with no file_info row → delete (optional, capped scan).</summary>
+        private void ReconcileDiskOrphans(string correlationId, string methodName)
+        {
+            var diskIds = _localFileStorage.EnumerateStoredIds(_diskScanMax);
+            if (diskIds.Count == 0)
+                return;
+
+            var known = AsyncHelper.RunSync(() => _fileInfoDataProvider.GetListAsync(diskIds.ToList()));
+            var knownSet = new HashSet<Guid>(known.Select(k => k.Id));
+            var deleted = 0;
+
+            foreach (var id in diskIds)
+            {
+                if (knownSet.Contains(id))
+                    continue;
+
+                try
+                {
+                    _localFileStorage.Delete(id);
+                    deleted++;
+                }
+                catch (Exception ex)
+                {
+                    logger.Warn(correlationId, null, methodName,
+                        $"Disk orphan delete failed for {id}: {ex.Message}");
+                }
+            }
+
+            if (deleted > 0)
+                logger.Info(correlationId, null, methodName, null, $"Deleted disk orphans: {deleted}", null);
         }
     }
 }

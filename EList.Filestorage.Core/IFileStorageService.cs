@@ -19,5 +19,7 @@ namespace EList.Filestorage.Core
         Task<CommandResult> AssertCanDownloadAsync(Guid id);
         Task<CommandResult<Model.Files.FileInfo>> GetFileInfoAsync(Guid id);
         Task<CommandResult> DeleteFileAsync(Guid id);
+        /// <summary>Oldest Active files older than cutoff (for elist.api orphan reconciler).</summary>
+        Task<CommandResult<List<Guid>>> GetGcCandidateIdsAsync(int olderThanDays, int take);
     }
 }
