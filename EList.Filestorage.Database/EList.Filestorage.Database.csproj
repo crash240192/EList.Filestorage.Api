@@ -9,11 +9,13 @@
   <ItemGroup>
     <None Remove="migrations\Baseline.sql" />
     <None Remove="migrations\M202609171955_file_visibility.sql" />
+    <None Remove="migrations\M202609172033_file_access_status.sql" />
   </ItemGroup>
 
   <ItemGroup>
     <EmbeddedResource Include="migrations\Baseline.sql" />
     <EmbeddedResource Include="migrations\M202609171955_file_visibility.sql" />
+    <EmbeddedResource Include="migrations\M202609172033_file_access_status.sql" />
   </ItemGroup>
 
   <ItemGroup>

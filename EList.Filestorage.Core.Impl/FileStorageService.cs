@@ -414,11 +414,42 @@ namespace EList.Filestorage.Core.Impl
             return CommandResult.OK;
         }
 
+        public async Task<CommandResult> SetFilesAccessStatusAsync(SetFilesAccessStatusRequest request)
+        {
+            var correlationId = _correlationIdProvider.Get();
+            var execTime = Stopwatch.StartNew();
+            var methodName = $"{LOGGER_NAME}{nameof(SetFilesAccessStatusAsync)}";
+
+            if (request == null || request.FileIds == null || request.FileIds.Count == 0)
+                return CommandResult.Fail(1, "Список fileIds не должен быть пустым");
+
+            var ids = request.FileIds.Where(id => id != Guid.Empty).Distinct().ToList();
+            if (ids.Count == 0)
+                return CommandResult.Fail(1, "Список fileIds не должен быть пустым");
+
+            // Moderation-only: service-token required (Active restore / Block).
+            if (!_authorizationDataStorage.IsServiceRequest)
+                return CommandResult.Fail(1, "Нет прав на изменение accessStatus");
+
+            await _storageDataProvider.UpdateAccessStatusAsync(ids, (short)request.AccessStatus);
+
+            logger.Debug(correlationId, null, methodName, "Method finished", null, execTime.Elapsed);
+            return CommandResult.OK;
+        }
+
         public async Task<CommandResult> AssertCanDownloadAsync(Guid id)
         {
             var fileInfo = await _storageDataProvider.GetAsync(id);
             if (fileInfo == null)
                 return CommandResult.Fail(1, $"Файл с id='{id}' отсутствует или не найден");
+
+            // Blocked: blob stays on disk; only service-token (elist.api staff proxy) may read.
+            if ((FileAccessStatus)fileInfo.AccessStatus == FileAccessStatus.Blocked)
+            {
+                if (_authorizationDataStorage.IsServiceRequest)
+                    return CommandResult.OK;
+                return CommandResult.Fail(1, "Файл заблокирован модерацией");
+            }
 
             var visibility = (FileVisibility)fileInfo.Visibility;
             if (visibility == FileVisibility.Public)
@@ -496,6 +527,7 @@ namespace EList.Filestorage.Core.Impl
                 Url = $"{serviceUrl}/{DOWNLOAD_METHOD}{fileInfo.Id}",
                 AccountId = fileInfo.AccountId,
                 Visibility = (FileVisibility)fileInfo.Visibility,
+                AccessStatus = (FileAccessStatus)fileInfo.AccessStatus,
                 MimeType = mimeType,
                 Metadata = new List<Metadata>
                     {

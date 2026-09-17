@@ -178,6 +178,30 @@ namespace EList.Filestorage.Api.Controllers
         }
 
         /// <summary>
+        /// Batch-обновление accessStatus (Active/Blocked). Только service-token (модерация).
+        /// Blocked не удаляет blob — download только через service-token.
+        /// </summary>
+        [HttpPost("setAccessStatus")]
+        public async Task<CommandResult> SetFilesAccessStatusAsync([FromBody] SetFilesAccessStatusRequest request)
+        {
+            var correlationId = _correlationIdProvider.Get();
+            var execTime = Stopwatch.StartNew();
+            var methodName = $"{LOGGER_NAME}{nameof(SetFilesAccessStatusAsync)}";
+            logger.Debug(correlationId, null, methodName, null, "Method started");
+            try
+            {
+                var result = await _fileStorageService.SetFilesAccessStatusAsync(request);
+                logger.Debug(correlationId, null, methodName, "Method finished", null, execTime.Elapsed);
+                return result;
+            }
+            catch (Exception ex)
+            {
+                logger.Error(correlationId, null, methodName, $"Method failed: {ex.Message}", execTime.Elapsed, ex);
+                return CommandResult.Fail(1, ex.Message);
+            }
+        }
+
+        /// <summary>
         /// Получить метаданные файла
         /// </summary>
         [HttpGet("info/{id}")]

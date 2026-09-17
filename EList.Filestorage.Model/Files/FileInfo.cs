@@ -9,6 +9,7 @@
         public List<Metadata> Metadata { get; set; }
         public Guid? AccountId { get; set; }
         public FileVisibility Visibility { get; set; }
+        public FileAccessStatus AccessStatus { get; set; }
         public string Url { get; set; }
     }
 

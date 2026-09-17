@@ -94,6 +94,7 @@ namespace EList.Filestorage.Data.Linq2db.Impl
                 existingItem.Context = item.Context;
                 existingItem.AccountId = item.AccountId;
                 existingItem.Visibility = item.Visibility;
+                existingItem.AccessStatus = item.AccessStatus;
                 existingItem.Processing = item.Processing;
                 existingItem.IsAvailable = item.IsAvailable;
                 // Preserve PreviewId — previously dropped on every UpdateAsync (video thumbs lost).
@@ -128,6 +129,20 @@ namespace EList.Filestorage.Data.Linq2db.Impl
                 await db.FileInfo
                     .Where(i => fileIds.Contains(i.Id))
                     .Set(i => i.Visibility, visibility)
+                    .UpdateAsync();
+            }
+        }
+
+        public async Task UpdateAccessStatusAsync(IReadOnlyList<Guid> fileIds, short accessStatus)
+        {
+            if (fileIds == null || fileIds.Count == 0)
+                return;
+
+            using (var db = GetDataConnection())
+            {
+                await db.FileInfo
+                    .Where(i => fileIds.Contains(i.Id))
+                    .Set(i => i.AccessStatus, accessStatus)
                     .UpdateAsync();
             }
         }

@@ -34,6 +34,10 @@ namespace EList.Filestorage.Data.Linq2db.Dto
         [Column("visibility")]
         public short Visibility { get; set; }
 
+        /// <summary>0 = Active, 1 = Blocked (moderation).</summary>
+        [Column("access_status")]
+        public short AccessStatus { get; set; }
+
         [Column("storage_type", DataType = DataType.Enum)]
         public StorageTypes StorageType { get; set; }
 
