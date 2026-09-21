@@ -17,6 +17,8 @@ using ConfigurationManager = EList.Common.Configuration.ConfigurationManager;
 
 var builder = WebApplication.CreateBuilder(args);
 
+ConfigurationManager.Initialize(builder.Configuration);
+
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddControllers().AddJsonOptions(options =>
 {

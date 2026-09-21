@@ -26,6 +26,8 @@ RUN mkdir -p /data/filestorage \
     && chown -R app:app /data/filestorage
 
 ENV ASPNETCORE_ENVIRONMENT=Production
+# Override at runtime for stage: -e ASPNETCORE_ENVIRONMENT=Staging
+# See DOCKER.md
 ENV ASPNETCORE_URLS=http://+:80
 ENV STORAGE_PATH=/data/filestorage
 

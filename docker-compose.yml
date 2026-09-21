@@ -9,10 +9,14 @@ services:
     ports:
       - "${FILESTORAGE_PORT:-8080}:80"
     environment:
-      ASPNETCORE_ENVIRONMENT: Production
+      # Production | Staging | Development — см. docs/docker-environment.md в elist.api
+      # Staging: детали 500 в ответе + appsettings.Staging.json
+      ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Production}
       STORAGE_PATH: /data/filestorage
     volumes:
       # Файлы хранятся на диске сервера, а не внутри контейнера.
       # Путь на хосте можно изменить через переменную FILESTORAGE_DATA_PATH.
       - ${FILESTORAGE_DATA_PATH:-./data/filestorage}:/data/filestorage
+      # Опционально: логи NLog на хост
+      # - ${FILESTORAGE_LOGS_PATH:-./logs/filestorage}:/app/logs
     restart: unless-stopped

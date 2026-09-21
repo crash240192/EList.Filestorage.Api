@@ -1,16 +1,18 @@
 using EList.Common.CorrelationId;
 using EList.Common.Logger;
-using EList.Common.Models;
 using Newtonsoft.Json;
 using NLog;
 using System.Net;
 using System.Text;
 using Task = System.Threading.Tasks.Task;
+using ConfigurationManager = EList.Common.Configuration.ConfigurationManager;
 
 namespace EList.Filestorage.Api.Middleware
 {
     public class ErrorHandlingMiddleware
     {
+        public const string CorrelationIdHeaderName = "X-Correlation-Id";
+
         #region logger
         private static readonly ILoggerWrapper logger = new NLogLoggerWrapper(LogManager.GetCurrentClassLogger());
         private const string LOGGER_NAME = "EList.Filestorage.Api.Middleware.ErrorHandlingMiddleware.";
@@ -58,24 +60,47 @@ namespace EList.Filestorage.Api.Middleware
             context.Response.ContentType = "application/json";
             context.Response.StatusCode = code;
 
-            var isDevelopment = _environment.IsDevelopment();
-            object bodyPayload = isDevelopment
+            var correlationId = correlationIdProvider.Get();
+            var exposeDetails = ShouldExposeDetailedErrors(_environment);
+
+            if (!string.IsNullOrWhiteSpace(correlationId)
+                && !context.Response.Headers.ContainsKey(CorrelationIdHeaderName))
+            {
+                context.Response.Headers[CorrelationIdHeaderName] = correlationId;
+            }
+
+            object bodyPayload = exposeDetails
                 ? new
                 {
                     errorCode = 1,
                     success = false,
                     message = FormatExceptionChain(exception),
-                    stackTrace = exception.ToString()
+                    stackTrace = exception.ToString(),
+                    correlationId
                 }
                 : new
                 {
                     errorCode = 1,
                     success = false,
                     message = "Внутренняя ошибка сервера. Обратитесь в поддержку и укажите correlation id.",
-                    correlationId = correlationIdProvider.Get()
+                    correlationId
                 };
 
             return context.Response.WriteAsync(JsonConvert.SerializeObject(bodyPayload));
+        }
+
+        internal static bool ShouldExposeDetailedErrors(IHostEnvironment environment)
+        {
+            if (environment.IsDevelopment() || environment.IsEnvironment("Staging"))
+                return true;
+
+            if (!ConfigurationManager.AppSettings.Contains("features:exposeDetailedErrors"))
+                return false;
+
+            return bool.TryParse(
+                       ConfigurationManager.AppSettings["features:exposeDetailedErrors"],
+                       out var enabled)
+                   && enabled;
         }
 
         private static string FormatExceptionChain(Exception exception)
