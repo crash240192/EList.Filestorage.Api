@@ -140,7 +140,15 @@ namespace EList.Filestorage.Api.Controllers
             {
                 var access = await _fileStorageService.AssertCanDownloadAsync(fileId);
                 if (!access.Success)
-                    return Unauthorized(access);
+                {
+                    // Раньше всегда Unauthorized → UI разлогинивал при отсутствующем/чужом файле
+                    return access.ErrorCode switch
+                    {
+                        404 => NotFound(access),
+                        403 => StatusCode(StatusCodes.Status403Forbidden, access),
+                        _ => Unauthorized(access),
+                    };
+                }
 
                 var result = await _fileStorageService.GetFileAsync(fileId, fullSize);
                 logger.Debug(correlationId, null, methodName, "Method finished", null, execTime.Elapsed);

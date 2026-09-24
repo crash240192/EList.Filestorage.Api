@@ -452,14 +452,15 @@ namespace EList.Filestorage.Core.Impl
         {
             var fileInfo = await _storageDataProvider.GetAsync(id);
             if (fileInfo == null)
-                return CommandResult.Fail(1, $"Файл с id='{id}' отсутствует или не найден");
+                // 404 — отсутствует; не 401, иначе UI сбрасывает сессию
+                return CommandResult.Fail(404, $"Файл с id='{id}' отсутствует или не найден");
 
             // Blocked: blob stays on disk; only service-token (elist.api staff proxy) may read.
             if ((FileAccessStatus)fileInfo.AccessStatus == FileAccessStatus.Blocked)
             {
                 if (_authorizationDataStorage.IsServiceRequest)
                     return CommandResult.OK;
-                return CommandResult.Fail(1, "Файл заблокирован модерацией");
+                return CommandResult.Fail(403, "Файл заблокирован модерацией");
             }
 
             var visibility = (FileVisibility)fileInfo.Visibility;
@@ -474,7 +475,7 @@ namespace EList.Filestorage.Core.Impl
             if (_authorizationDataStorage.AccoutId != null)
                 return CommandResult.OK;
 
-            return CommandResult.Fail(1, "Файл доступен только авторизованным пользователям");
+            return CommandResult.Fail(401, "Файл доступен только авторизованным пользователям");
         }
 
         public async Task<FileStreamContainer> GetFileAsync(Guid id, bool? fullSize = false)
