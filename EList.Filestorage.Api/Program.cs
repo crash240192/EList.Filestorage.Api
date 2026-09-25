@@ -107,6 +107,7 @@ app.UseRouting();
 
 app.UseMiddleware<ErrorHandlingMiddleware>();
 app.UseMiddleware<CorrelationIdMiddleware>();
+app.UseMiddleware<DownloadConcurrencyMiddleware>();
 
 app.UseAuthentication();
 app.UseAuthorization();
