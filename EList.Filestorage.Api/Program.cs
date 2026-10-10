@@ -17,7 +17,9 @@ using ConfigurationManager = EList.Common.Configuration.ConfigurationManager;
 
 var builder = WebApplication.CreateBuilder(args);
 
-ConfigurationManager.Initialize(builder.Configuration);
+// ContentRoot: серверный appsettings.Production.json должен перекрывать base,
+// даже если ASPNETCORE_ENVIRONMENT ≠ Production (см. EList.Common.ConfigurationManager).
+ConfigurationManager.Initialize(builder.Configuration, builder.Environment.ContentRootPath);
 
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddControllers().AddJsonOptions(options =>
