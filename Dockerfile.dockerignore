@@ -1,0 +1,14 @@
+**/.git
+**/.vs
+**/.idea
+**/.vscode
+**/bin
+**/obj
+**/*.user
+**/FileStorage
+**/data
+**/publish
+**/.env
+**/.env.*
+**/*.md
+**/.cursor
