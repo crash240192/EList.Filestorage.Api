@@ -1,0 +1,46 @@
+name: Build
+
+on:
+  push:
+    branches:
+      - develop
+      - main
+      - "rc/**"
+    tags:
+      - "release_*"
+  pull_request:
+    branches:
+      - develop
+      - main
+      - "rc/**"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Filestorage
+        uses: actions/checkout@v4
+
+      # ProjectReference: ../../EList.Common/... (sibling of repo root)
+      - name: Checkout Common
+        uses: actions/checkout@v4
+        with:
+          repository: crash240192/EList.Common
+          ref: develop
+          path: _common_checkout
+
+      - name: Place Common as sibling
+        run: |
+          mv "$GITHUB_WORKSPACE/_common_checkout" "$(dirname "$GITHUB_WORKSPACE")/EList.Common"
+          test -f "$(dirname "$GITHUB_WORKSPACE")/EList.Common/EList.Common/EList.Common.csproj"
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "6.0.x"
+
+      - name: Restore
+        run: dotnet restore EList.Filestorage.sln
+
+      - name: Build
+        run: dotnet build EList.Filestorage.sln -c Release --no-restore
