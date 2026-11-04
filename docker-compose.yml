@@ -5,7 +5,7 @@ services:
       dockerfile: ${FILESTORAGE_REPO_DIR:-elist.filestorage}/Dockerfile
       args:
         PROJECT_DIR: ${FILESTORAGE_REPO_DIR:-elist.filestorage}
-    image: crash240192/elist-filestorage-api
+    image: crash240192/elist.filestorage.api
     ports:
       - "${FILESTORAGE_PORT:-8080}:80"
     environment:

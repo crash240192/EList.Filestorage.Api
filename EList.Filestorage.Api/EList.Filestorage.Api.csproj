@@ -5,7 +5,7 @@
 		<Nullable>enable</Nullable>
 		<ImplicitUsings>enable</ImplicitUsings>
 		<GenerateDocumentationFile>true</GenerateDocumentationFile>
-		<ContainerImageName>crash240192/elist-filestorage-api</ContainerImageName>
+		<ContainerImageName>crash240192/elist.filestorage.api</ContainerImageName>
 		<DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
 	</PropertyGroup>
 

@@ -4,7 +4,7 @@
 #     EList.Common/
 #
 #   cd parent
-#   docker build -f elist.filestorage/Dockerfile -t crash240192/elist-filestorage-api .
+#   docker build -f elist.filestorage/Dockerfile -t crash240192/elist.filestorage.api .
 
 ARG PROJECT_DIR=elist.filestorage
 
