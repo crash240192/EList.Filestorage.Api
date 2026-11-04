@@ -22,8 +22,11 @@ RUN dotnet publish EList.Filestorage.Api/EList.Filestorage.Api.csproj -c Release
 FROM mcr.microsoft.com/dotnet/aspnet:6.0 AS runtime
 WORKDIR /app
 
-RUN mkdir -p /data/filestorage \
-    && chown -R app:app /data/filestorage
+# aspnet:6.0 не содержит user app (в отличие от .NET 8+)
+RUN groupadd --system app \
+    && useradd --system --gid app --home-dir /app --shell /usr/sbin/nologin app \
+    && mkdir -p /data/filestorage /app/logs \
+    && chown -R app:app /app /data/filestorage
 
 ENV ASPNETCORE_ENVIRONMENT=Production
 # Override at runtime for stage: -e ASPNETCORE_ENVIRONMENT=Staging
@@ -33,7 +36,7 @@ ENV STORAGE_PATH=/data/filestorage
 
 VOLUME ["/data/filestorage"]
 
-COPY --from=build /app/publish .
+COPY --from=build --chown=app:app /app/publish .
 
 EXPOSE 80
 
