@@ -23,6 +23,8 @@ FROM mcr.microsoft.com/dotnet/aspnet:6.0 AS runtime
 WORKDIR /app
 
 # aspnet:6.0 не содержит user app (в отличие от .NET 8+)
+# Entrypoint стартует от root → chown каталога тома → drop privileges на app.
+# Иначе bind-mount с хоста (часто root:root) ломает upload при рабочих download.
 RUN groupadd --system app \
     && useradd --system --gid app --home-dir /app --shell /usr/sbin/nologin app \
     && mkdir -p /data/filestorage /app/logs \
@@ -37,9 +39,12 @@ ENV STORAGE_PATH=/data/filestorage
 VOLUME ["/data/filestorage"]
 
 COPY --from=build --chown=app:app /app/publish .
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 EXPOSE 80
 
-USER app
+# Не USER app: entrypoint должен уметь chown смонтированного тома
+ENTRYPOINT ["docker-entrypoint.sh"]
+CMD ["dotnet", "EList.Filestorage.Api.dll"]
 
-ENTRYPOINT ["dotnet", "EList.Filestorage.Api.dll"]

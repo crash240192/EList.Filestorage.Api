@@ -56,14 +56,29 @@ namespace EList.Filestorage.Core.Impl
             stream.Position = 0;
 
             var filePath = GetFilePath(id);
-            using (var fileStream = File.OpenWrite(filePath))
+            try
             {
-                await stream.CopyToAsync(fileStream);
+                using (var fileStream = File.OpenWrite(filePath))
+                {
+                    await stream.CopyToAsync(fileStream);
+                }
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                // Типичный кейс Docker: процесс от user app, том на хосте root:root 755 —
+                // download работает, upload падает с "Access to the path '.../guid' is denied."
+                throw new UnauthorizedAccessException(
+                    $"Нет прав на запись в '{_storageDirectory}' (файл '{id}'). " +
+                    $"На хосте: chown на UID пользователя app в контейнере " +
+                    $"(или перезапуск образа с entrypoint, который чинит владельца каталога). " +
+                    $"Исходная ошибка: {ex.Message}",
+                    ex);
             }
 
             logger.Debug(correlationId, null, methodName, "Method finished", null, execTime.Elapsed);
             return filePath;
         }
+
 
         public void Delete(Guid id)
         {
