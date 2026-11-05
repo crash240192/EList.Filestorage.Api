@@ -39,7 +39,8 @@ ENV STORAGE_PATH=/data/filestorage
 VOLUME ["/data/filestorage"]
 
 COPY --from=build --chown=app:app /app/publish .
-COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+# context = parent/; entrypoint лежит внутри PROJECT_DIR (уже скопирован в build)
+COPY --from=build /src/elist.filestorage/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 EXPOSE 80
